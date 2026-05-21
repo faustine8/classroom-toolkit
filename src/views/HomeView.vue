@@ -134,7 +134,7 @@ async function joinRecitationRoom() {
           v-model="joinCode"
           autocomplete="off"
           maxlength="4"
-          placeholder="A7K2"
+          placeholder="请输入房间码（不区分大小写）"
           type="text"
           @input="joinCode = normalizeSessionCode(joinCode)"
         />

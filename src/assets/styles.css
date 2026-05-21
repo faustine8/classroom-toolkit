@@ -245,6 +245,10 @@ h2 {
   box-shadow: 0 0 0 4px rgba(47, 138, 97, 0.16);
 }
 
+#join-code::placeholder {
+  font-size: clamp(0.78rem, 3.5vw, 1.25rem);
+}
+
 .create-actions,
 .header-actions,
 .primary-actions {

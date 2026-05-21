@@ -10,7 +10,9 @@ import {
   callNext,
   clearQueue,
   markDone,
+  normalizeSessionCode,
   removeQueueItem,
+  repeatCall,
   verifyTeacherPin,
   watchQueue,
   type QueueItem,
@@ -21,7 +23,7 @@ import { getErrorMessage } from '@/utils/errorMessage';
 type NoticeKind = 'success' | 'warning' | 'info';
 
 const route = useRoute();
-const sessionCode = computed(() => String(route.params.sessionCode ?? '').toUpperCase());
+const sessionCode = computed(() => normalizeSessionCode(String(route.params.sessionCode ?? '')));
 const room = ref<Room | null>(null);
 const current = ref<QueueItem | null>(null);
 const waiting = ref<QueueItem[]>([]);
@@ -142,6 +144,18 @@ async function handleMarkDone() {
   });
 }
 
+async function handleRepeatCall() {
+  await runAction(async () => {
+    if (!currentStudentNo.value) {
+      showNotice('warning', '当前没有正在背书的学生');
+      return;
+    }
+
+    await repeatCall(sessionCode.value);
+    showNotice('info', `已重复呼叫 ${currentStudentNo.value} 号`);
+  });
+}
+
 async function handleRemove(item: QueueItem) {
   await runAction(async () => {
     const removed = await removeQueueItem(item._id);
@@ -229,6 +243,9 @@ onBeforeUnmount(() => {
 
       <div class="primary-actions">
         <button class="button button--primary" :disabled="isBusy" type="button" @click="handleCallNext">下一位</button>
+        <button class="button button--secondary" :disabled="isBusy || !currentStudentNo" type="button" @click="handleRepeatCall">
+          重复呼叫
+        </button>
         <button class="button button--success" :disabled="isBusy || !current" type="button" @click="handleMarkDone">
           通过/完成
         </button>

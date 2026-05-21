@@ -210,6 +210,7 @@ describe('cloudbaseService', () => {
       sessionCode: 'A7K2',
       teacherPin: '1357',
       currentStudentNo: null,
+      announceVersion: 0,
       createdAt: '2026-05-21T00:00:00.000Z',
       updatedAt: '2026-05-21T00:00:00.000Z'
     });
@@ -270,6 +271,28 @@ describe('cloudbaseService', () => {
     await service.markDone('A7K2', first._id);
     const next = await service.callNext('A7K2');
     expect(next).toMatchObject({ studentNo: '8', status: 'current' });
+  });
+
+  it('increments announce version for repeat calls without changing queue state', async () => {
+    const { db, service } = createFakeService();
+    await service.createRoom('课堂');
+    const first = await service.joinQueue('a7k2', '7');
+    await service.callNext('A7K2');
+
+    const room = await service.repeatCall(' a7k2 ');
+
+    expect(room).toMatchObject({
+      sessionCode: 'A7K2',
+      currentStudentNo: '7',
+      announceVersion: 1,
+      updatedAt: '2026-05-21T00:03:00.000Z'
+    });
+    await expect(db.collection('queueItems').doc(first._id).get()).resolves.toMatchObject({
+      data: expect.objectContaining({ status: 'current', roomCode: 'A7K2', studentNo: '7' })
+    });
+    await expect(db.collection('rooms').doc('A7K2').get()).resolves.toMatchObject({
+      data: expect.objectContaining({ announceVersion: 1, currentStudentNo: '7' })
+    });
   });
 
   it('clears active queue items without touching completed items', async () => {

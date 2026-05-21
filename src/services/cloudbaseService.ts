@@ -8,6 +8,7 @@ export interface Room {
   title: string;
   sessionCode: string;
   currentStudentNo: string | null;
+  announceVersion: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -159,6 +160,16 @@ function requireStudentNo(displayNo: string): string {
   return studentNo;
 }
 
+function toNonNegativeInteger(value: unknown): number {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+
+  return Math.trunc(parsed);
+}
+
 function toRoom(raw: unknown, fallbackId: string): Room | null {
   const [data] = getDataArray<Record<string, unknown>>(raw);
 
@@ -167,10 +178,11 @@ function toRoom(raw: unknown, fallbackId: string): Room | null {
   }
 
   return {
-    _id: String(data._id ?? fallbackId),
+    _id: normalizeSessionCode(String(data._id ?? fallbackId)),
     title: String(data.title ?? ''),
-    sessionCode: String(data.sessionCode ?? fallbackId),
+    sessionCode: normalizeSessionCode(String(data.sessionCode ?? fallbackId)),
     currentStudentNo: typeof data.currentStudentNo === 'string' ? data.currentStudentNo : null,
+    announceVersion: toNonNegativeInteger(data.announceVersion),
     createdAt: String(data.createdAt ?? ''),
     updatedAt: String(data.updatedAt ?? '')
   };
@@ -199,7 +211,7 @@ function toQueueItem(raw: unknown): QueueItem | null {
 
   return {
     _id: data._id,
-    roomCode: String(data.roomCode ?? ''),
+    roomCode: normalizeSessionCode(String(data.roomCode ?? '')),
     studentNo: String(data.studentNo ?? ''),
     status: data.status as QueueStatus,
     createdAt: String(data.createdAt ?? ''),
@@ -388,6 +400,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
         sessionCode,
         teacherPin: teacherPinGenerator(),
         currentStudentNo: null,
+        announceVersion: 0,
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -397,6 +410,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
         sessionCode: room.sessionCode,
         teacherPin: room.teacherPin,
         currentStudentNo: room.currentStudentNo,
+        announceVersion: room.announceVersion,
         createdAt: room.createdAt,
         updatedAt: room.updatedAt
       });
@@ -512,6 +526,34 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return doneItem;
   }
 
+  async function repeatCall(sessionCode: string): Promise<Room> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+    const room = requireRoom(await getRoom(code), code);
+    const currentItem = await getCurrentItem(code);
+    const currentStudentNo = room.currentStudentNo ?? currentItem?.studentNo ?? null;
+
+    if (!currentStudentNo) {
+      throw new Error('当前没有正在背书的学生');
+    }
+
+    const timestamp = now();
+    const updatedRoom: Room = {
+      ...room,
+      currentStudentNo,
+      announceVersion: room.announceVersion + 1,
+      updatedAt: timestamp
+    };
+
+    await db.collection(ROOM_COLLECTION).doc(code).update({
+      currentStudentNo: updatedRoom.currentStudentNo,
+      announceVersion: updatedRoom.announceVersion,
+      updatedAt: updatedRoom.updatedAt
+    });
+
+    return updatedRoom;
+  }
+
   async function removeQueueItem(queueItemId: string): Promise<QueueItem> {
     const db = await getDb();
     const item = await getQueueItem(queueItemId);
@@ -579,11 +621,15 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
   ): Promise<() => void> {
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
-    const room = requireRoom(await getRoom(code), code);
 
-    callback(buildQueueSnapshot(room, await getSnapshotItems(code)));
+    async function emitSnapshot(items?: QueueItem[]) {
+      const latestRoom = requireRoom(await getRoom(code), code);
+      callback(buildQueueSnapshot(latestRoom, items ?? (await getSnapshotItems(code))));
+    }
 
-    const listener = db
+    await emitSnapshot();
+
+    const queueListener = db
       .collection(QUEUE_COLLECTION)
       .where({
         roomCode: code,
@@ -593,8 +639,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       .watch?.({
         onChange: async (snapshot) => {
           try {
-            const latestRoom = requireRoom(await getRoom(code), code);
-            callback(buildQueueSnapshot(latestRoom, toQueueItems(snapshot.docs ?? [])));
+            await emitSnapshot(toQueueItems(snapshot.docs ?? []));
           } catch (error) {
             onError(error);
           }
@@ -602,11 +647,31 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
         onError
       });
 
-    if (!listener) {
+    const roomListener = db
+      .collection(ROOM_COLLECTION)
+      .where({ sessionCode: code })
+      .limit(1)
+      .watch?.({
+        onChange: async () => {
+          try {
+            await emitSnapshot();
+          } catch (error) {
+            onError(error);
+          }
+        },
+        onError
+      });
+
+    if (!queueListener || !roomListener) {
+      queueListener?.close();
+      roomListener?.close();
       throw new Error('当前 CloudBase SDK 不支持实时监听');
     }
 
-    return () => listener.close();
+    return () => {
+      queueListener.close();
+      roomListener.close();
+    };
   }
 
   return {
@@ -618,6 +683,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     watchQueue,
     callNext,
     markDone,
+    repeatCall,
     removeQueueItem,
     clearQueue
   };
@@ -633,5 +699,6 @@ export const joinQueue = defaultService.joinQueue;
 export const watchQueue = defaultService.watchQueue;
 export const callNext = defaultService.callNext;
 export const markDone = defaultService.markDone;
+export const repeatCall = defaultService.repeatCall;
 export const removeQueueItem = defaultService.removeQueueItem;
 export const clearQueue = defaultService.clearQueue;

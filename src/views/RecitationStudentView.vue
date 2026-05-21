@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { normalizeStudentNo } from '@/features/recitation/sessionLogic';
-import { joinQueue, watchQueue, type QueueItem, type Room } from '@/services/cloudbaseService';
+import { joinQueue, normalizeSessionCode, watchQueue, type QueueItem, type Room } from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
 
 type NoticeKind = 'success' | 'warning' | 'info';
@@ -10,16 +10,31 @@ type NoticeKind = 'success' | 'warning' | 'info';
 const VOICE_ENABLED_STORAGE_KEY = 'classroom-toolkit:recitation-voice-enabled';
 const LEGACY_CALL_ALERT_STORAGE_KEY = 'classroom-toolkit:recitation-call-alert-enabled';
 const PREFERRED_CHINESE_VOICE_KEYWORDS = [
-  'tingting',
-  'microsoft xiaoyi',
-  'microsoft xiaoxiao',
-  'meijia',
-  'google 中文',
-  'google 普通话',
-  'chinese'
-];
+  'Microsoft Yaoyao',
+  'Microsoft Huihui',
+  'Microsoft Kangkang',
+
+  // 如果 Edge/系统里有新版自然语音，就优先尝试这些
+  'Microsoft Xiaoxiao',
+  'Microsoft Xiaoyi',
+  'Microsoft Yunxi',
+  'Microsoft Yunyang',
+
+  // 兜底关键词
+  'Yaoyao',
+  'Huihui',
+  'Kangkang',
+  'Xiaoxiao',
+  'Xiaoyi',
+  'Yunxi',
+  'Yunyang',
+  'Chinese',
+  '中文',
+  '普通话'
+]
+
 const route = useRoute();
-const sessionCode = computed(() => String(route.params.sessionCode ?? '').toUpperCase());
+const sessionCode = computed(() => normalizeSessionCode(String(route.params.sessionCode ?? '')));
 const studentInput = ref('');
 const studentNoInput = ref<HTMLInputElement | null>(null);
 const ownStudentNo = ref('');
@@ -31,6 +46,7 @@ const isJoining = ref(false);
 const isWatching = ref(true);
 const voiceEnabled = ref(readStoredVoiceEnabled());
 const lastAnnouncedCurrentNo = ref<string | null>(null);
+const lastHandledAnnounceVersion = ref(0);
 const preferredChineseVoice = ref<SpeechSynthesisVoice | null>(null);
 let stopWatching: (() => void) | null = null;
 let hasReceivedInitialQueueSnapshot = false;
@@ -40,6 +56,7 @@ let previousVoicesChangedHandler: SpeechSynthesis['onvoiceschanged'] = null;
 
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
 const nextStudentNo = computed(() => waiting.value[0]?.studentNo ?? null);
+const announceVersion = computed(() => room.value?.announceVersion ?? 0);
 const voiceStatusText = computed(() => (voiceEnabled.value ? '语音播报已开启' : '语音播报已关闭'));
 const ownWaitingIndex = computed(() =>
   ownStudentNo.value ? waiting.value.findIndex((item) => item.studentNo === ownStudentNo.value) : -1
@@ -121,7 +138,7 @@ function buildAnnouncementText(currentNo: string, nextNo: string | null): string
     return `请 ${currentNo} 号来背书，${nextNo} 号请准备`;
   }
 
-  return `${currentNo} 号来背书`;
+  return `请 ${currentNo} 号来背书`;
 }
 
 function selectPreferredChineseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
@@ -280,6 +297,7 @@ function showVoicePlaybackHint() {
 function handleVoiceEnabledChange() {
   persistVoiceEnabled();
   lastAnnouncedCurrentNo.value = currentStudentNo.value;
+  lastHandledAnnounceVersion.value = announceVersion.value;
 
   if (voiceEnabled.value) {
     void unlockReminderAudio();
@@ -320,17 +338,25 @@ async function submitStudentNo() {
   }
 }
 
-watch([currentStudentNo, nextStudentNo], ([newCurrentNo, newNextNo]) => {
-  if (
-    !hasReceivedInitialQueueSnapshot ||
-    !voiceEnabled.value ||
-    !newCurrentNo ||
-    newCurrentNo === lastAnnouncedCurrentNo.value
-  ) {
+watch([currentStudentNo, nextStudentNo, announceVersion], ([newCurrentNo, newNextNo, newAnnounceVersion]) => {
+  if (!hasReceivedInitialQueueSnapshot || !newCurrentNo) {
+    return;
+  }
+
+  const currentChanged = newCurrentNo !== lastAnnouncedCurrentNo.value;
+  const announceVersionChanged = newAnnounceVersion !== lastHandledAnnounceVersion.value;
+
+  if (!currentChanged && !announceVersionChanged) {
     return;
   }
 
   lastAnnouncedCurrentNo.value = newCurrentNo;
+  lastHandledAnnounceVersion.value = newAnnounceVersion;
+
+  if (!voiceEnabled.value) {
+    return;
+  }
+
   announceCall(newCurrentNo, newNextNo);
 });
 
@@ -343,6 +369,7 @@ onMounted(async () => {
       (snapshot) => {
         if (!hasReceivedInitialQueueSnapshot) {
           lastAnnouncedCurrentNo.value = snapshot.current?.studentNo ?? snapshot.room.currentStudentNo ?? null;
+          lastHandledAnnounceVersion.value = snapshot.room.announceVersion;
           hasReceivedInitialQueueSnapshot = true;
         }
 
