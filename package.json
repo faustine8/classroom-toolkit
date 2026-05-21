@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@cloudbase/js-sdk": "3.3.10",
     "@vitejs/plugin-vue": "^6.0.7",
     "pinia": "^3.0.4",
     "vite": "^8.0.13",
