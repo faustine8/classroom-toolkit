@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createCloudBaseService, normalizeSessionCode } from './cloudbaseService';
+import { createCloudBaseService, normalizeSessionCode, type QueueSnapshot } from './cloudbaseService';
 
 type DocData = Record<string, unknown>;
 
@@ -105,6 +105,10 @@ class FakeQuery {
     }
 
     return { updated: matched.data.length };
+  }
+
+  watch(_options: { onChange: (snapshot: { docs?: unknown[] }) => void; onError: (error: unknown) => void }) {
+    return { close: vi.fn() };
   }
 }
 
@@ -285,5 +289,26 @@ describe('cloudbaseService', () => {
         expect.objectContaining({ studentNo: '8', status: 'removed' })
       ])
     );
+  });
+
+  it('includes completed students in queue snapshots', async () => {
+    const { service } = createFakeService();
+    await service.createRoom('课堂');
+    const first = await service.joinQueue('A7K2', '7');
+    await service.joinQueue('A7K2', '8');
+    await service.callNext('A7K2');
+    await service.markDone('A7K2', first._id);
+
+    const snapshots: QueueSnapshot[] = [];
+    const stopWatching = await service.watchQueue('A7K2', (snapshot) => {
+      snapshots.push(snapshot);
+    });
+    stopWatching();
+
+    expect(snapshots[0]).toMatchObject({
+      current: null,
+      waiting: [expect.objectContaining({ studentNo: '8', status: 'waiting' })],
+      completedQueue: [expect.objectContaining({ studentNo: '7', status: 'done' })]
+    });
   });
 });

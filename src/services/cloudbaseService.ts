@@ -33,6 +33,7 @@ export interface QueueSnapshot {
   room: Room;
   current: QueueItem | null;
   waiting: QueueItem[];
+  completedQueue: QueueItem[];
   activeItems: QueueItem[];
 }
 
@@ -81,6 +82,7 @@ export interface CreateCloudBaseServiceOptions {
 const ROOM_COLLECTION = 'rooms';
 const QUEUE_COLLECTION = 'queueItems';
 const ACTIVE_STATUSES: QueueStatus[] = ['waiting', 'current'];
+const SNAPSHOT_STATUSES: QueueStatus[] = ['waiting', 'current', 'done'];
 const SESSION_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SESSION_CODE_LENGTH = 4;
 const TEACHER_PIN_CHARS = '0123456789';
@@ -216,9 +218,11 @@ function buildQueueItemId(sessionCode: string, studentNo: string): string {
 }
 
 function buildQueueSnapshot(room: Room, items: QueueItem[]): QueueSnapshot {
-  const activeItems = [...items].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const sortedItems = [...items].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const activeItems = sortedItems.filter((item) => ACTIVE_STATUSES.includes(item.status));
   const current = activeItems.find((item) => item.status === 'current') ?? null;
   const waiting = activeItems.filter((item) => item.status === 'waiting');
+  const completedQueue = sortedItems.filter((item) => item.status === 'done');
 
   return {
     room: {
@@ -227,6 +231,7 @@ function buildQueueSnapshot(room: Room, items: QueueItem[]): QueueSnapshot {
     },
     current,
     waiting,
+    completedQueue,
     activeItems
   };
 }
@@ -345,13 +350,13 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return toQueueItems(result.data)[0] ?? null;
   }
 
-  async function getActiveItems(sessionCode: string): Promise<QueueItem[]> {
+  async function getSnapshotItems(sessionCode: string): Promise<QueueItem[]> {
     const db = await getDb();
     const result = await db
       .collection(QUEUE_COLLECTION)
       .where({
         roomCode: normalizeSessionCode(sessionCode),
-        status: db.command.in(ACTIVE_STATUSES)
+        status: db.command.in(SNAPSHOT_STATUSES)
       })
       .orderBy('createdAt', 'asc')
       .get();
@@ -576,13 +581,13 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const code = normalizeSessionCode(sessionCode);
     const room = requireRoom(await getRoom(code), code);
 
-    callback(buildQueueSnapshot(room, await getActiveItems(code)));
+    callback(buildQueueSnapshot(room, await getSnapshotItems(code)));
 
     const listener = db
       .collection(QUEUE_COLLECTION)
       .where({
         roomCode: code,
-        status: db.command.in(ACTIVE_STATUSES)
+        status: db.command.in(SNAPSHOT_STATUSES)
       })
       .orderBy('createdAt', 'asc')
       .watch?.({

@@ -25,6 +25,7 @@ const sessionCode = computed(() => String(route.params.sessionCode ?? '').toUppe
 const room = ref<Room | null>(null);
 const current = ref<QueueItem | null>(null);
 const waiting = ref<QueueItem[]>([]);
+const completedQueue = ref<QueueItem[]>([]);
 const notice = ref<{ kind: NoticeKind; text: string } | null>(null);
 const isBusy = ref(false);
 const isWatching = ref(false);
@@ -74,6 +75,7 @@ async function startWatching() {
         room.value = snapshot.room;
         current.value = snapshot.current;
         waiting.value = snapshot.waiting;
+        completedQueue.value = snapshot.completedQueue;
         isWatching.value = false;
       },
       (error) => {
@@ -257,6 +259,22 @@ onBeforeUnmount(() => {
         </ol>
 
         <p v-else class="empty-text">{{ isWatching ? '正在连接实时队列...' : '暂无等待学生' }}</p>
+      </article>
+
+      <article class="list-panel list-panel--completed">
+        <header>
+          <h2>已通过</h2>
+          <span>{{ completedQueue.length }} 人</span>
+        </header>
+
+        <ol v-if="completedQueue.length" class="queue-list completed-list">
+          <li v-for="(student, index) in completedQueue" :key="student._id">
+            <span class="queue-index">{{ index + 1 }}</span>
+            <strong>{{ student.studentNo }}</strong>
+          </li>
+        </ol>
+
+        <p v-else class="empty-text">暂无已通过学生</p>
       </article>
     </section>
     </template>

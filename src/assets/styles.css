@@ -1,4 +1,6 @@
 :root {
+  --app-banner-height: 160px;
+
   color: #16211b;
   background: #f5f6f1;
   font-family:
@@ -41,7 +43,7 @@ a {
 
 .page {
   width: min(1280px, calc(100% - 40px));
-  min-height: 100vh;
+  min-height: calc(100vh - var(--app-banner-height));
   margin: 0 auto;
   padding: 36px 0 104px;
 }
@@ -388,6 +390,102 @@ h2 {
   line-height: 1.12;
 }
 
+.voice-settings-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 20px;
+  border: 2px solid #dfe6dd;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.voice-settings-status {
+  display: grid;
+  gap: 8px;
+}
+
+.voice-settings-panel span {
+  color: #415248;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.voice-settings-panel strong {
+  color: #103b28;
+  font-size: clamp(1.4rem, 2vw, 2rem);
+}
+
+.voice-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.voice-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 2px solid #c8d5ca;
+  border-radius: 8px;
+  background: #f8faf8;
+  cursor: pointer;
+  user-select: none;
+}
+
+.voice-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.voice-switch__track {
+  position: relative;
+  width: 58px;
+  height: 32px;
+  border-radius: 999px;
+  background: #a9b7ad;
+  transition: background 160ms ease;
+}
+
+.voice-switch__thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(22, 33, 27, 0.22);
+  transition: transform 160ms ease;
+}
+
+.voice-switch input:checked + .voice-switch__track {
+  background: #226f4c;
+}
+
+.voice-switch input:checked + .voice-switch__track .voice-switch__thumb {
+  transform: translateX(26px);
+}
+
+.voice-switch input:focus-visible + .voice-switch__track {
+  box-shadow: 0 0 0 4px rgba(47, 138, 97, 0.18);
+}
+
+.voice-switch__label {
+  min-width: 42px;
+  color: #203228;
+  font-weight: 900;
+}
+
 .input-display,
 .notice {
   border-radius: 8px;
@@ -468,9 +566,12 @@ h2 {
   gap: 16px;
 }
 
-.dashboard-grid--student,
-.dashboard-grid--teacher {
+.dashboard-grid--student {
   grid-template-columns: minmax(280px, 1fr);
+}
+
+.dashboard-grid--teacher {
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
 }
 
 .list-panel {
@@ -517,6 +618,10 @@ h2 {
   padding: 8px;
   border-radius: 8px;
   background: #f4f7f4;
+}
+
+.completed-list li {
+  grid-template-columns: 52px 1fr;
 }
 
 .queue-list__item--self {
@@ -639,6 +744,10 @@ h2 {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --app-banner-height: 110px;
+  }
+
   .page,
   .run-page {
     width: min(100% - 24px, 1440px);
@@ -647,6 +756,15 @@ h2 {
 
   .current-panel {
     min-height: 240px;
+  }
+
+  .voice-settings-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .voice-settings-actions {
+    justify-content: stretch;
   }
 
   .queue-list li {
