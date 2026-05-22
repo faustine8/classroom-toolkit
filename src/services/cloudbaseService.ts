@@ -26,6 +26,7 @@ export interface QueueItem {
   roomCode: string;
   studentNo: string;
   status: QueueStatus;
+  orderKey: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -214,6 +215,7 @@ function toQueueItem(raw: unknown): QueueItem | null {
     roomCode: normalizeSessionCode(String(data.roomCode ?? '')),
     studentNo: String(data.studentNo ?? ''),
     status: data.status as QueueStatus,
+    orderKey: String(data.orderKey ?? data.createdAt ?? ''),
     createdAt: String(data.createdAt ?? ''),
     updatedAt: String(data.updatedAt ?? '')
   };
@@ -229,8 +231,34 @@ function buildQueueItemId(sessionCode: string, studentNo: string): string {
   return `${sessionCode}_${studentNo}`;
 }
 
+function compareQueueItems(left: QueueItem, right: QueueItem): number {
+  const orderResult = left.orderKey.localeCompare(right.orderKey);
+
+  if (orderResult !== 0) {
+    return orderResult;
+  }
+
+  const createdResult = left.createdAt.localeCompare(right.createdAt);
+
+  if (createdResult !== 0) {
+    return createdResult;
+  }
+
+  return left._id.localeCompare(right._id);
+}
+
+function createQueueOrderBefore(orderKey: string): string {
+  const timestamp = Date.parse(orderKey);
+
+  if (Number.isFinite(timestamp)) {
+    return new Date(timestamp - 1).toISOString();
+  }
+
+  return `!${orderKey}`;
+}
+
 function buildQueueSnapshot(room: Room, items: QueueItem[]): QueueSnapshot {
-  const sortedItems = [...items].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const sortedItems = [...items].sort(compareQueueItems);
   const activeItems = sortedItems.filter((item) => ACTIVE_STATUSES.includes(item.status));
   const current = activeItems.find((item) => item.status === 'current') ?? null;
   const waiting = activeItems.filter((item) => item.status === 'waiting');
@@ -362,6 +390,17 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return toQueueItems(result.data)[0] ?? null;
   }
 
+  async function getWaitingItems(sessionCode: string): Promise<QueueItem[]> {
+    const db = await getDb();
+    const result = await db
+      .collection(QUEUE_COLLECTION)
+      .where({ roomCode: normalizeSessionCode(sessionCode), status: 'waiting' })
+      .orderBy('createdAt', 'asc')
+      .get();
+
+    return toQueueItems(result.data).sort(compareQueueItems);
+  }
+
   async function getSnapshotItems(sessionCode: string): Promise<QueueItem[]> {
     const db = await getDb();
     const result = await db
@@ -440,6 +479,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       roomCode: code,
       studentNo,
       status: 'waiting',
+      orderKey: timestamp,
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -448,6 +488,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       roomCode: item.roomCode,
       studentNo: item.studentNo,
       status: item.status,
+      orderKey: item.orderKey,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt
     });
@@ -466,13 +507,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       throw new Error('请先完成当前学生，再叫下一位');
     }
 
-    const result = await db
-      .collection(QUEUE_COLLECTION)
-      .where({ roomCode: code, status: 'waiting' })
-      .orderBy('createdAt', 'asc')
-      .limit(1)
-      .get();
-    const nextItem = toQueueItems(result.data)[0];
+    const nextItem = (await getWaitingItems(code))[0];
 
     if (!nextItem) {
       throw new Error('等待队列为空，暂无可叫号学生');
@@ -495,6 +530,39 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     });
 
     return updatedItem;
+  }
+
+  async function prioritizeQueueItem(sessionCode: string, queueItemId: string): Promise<QueueItem> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+    requireRoom(await getRoom(code), code);
+
+    const waitingItems = await getWaitingItems(code);
+    const firstWaitingItem = waitingItems[0];
+    const targetItem = waitingItems.find((item) => item._id === queueItemId);
+
+    if (!targetItem) {
+      throw new Error('只能置顶等待队列中的学生');
+    }
+
+    if (firstWaitingItem?._id === queueItemId) {
+      return targetItem;
+    }
+
+    const timestamp = now();
+    const prioritizedItem: QueueItem = {
+      ...targetItem,
+      orderKey: createQueueOrderBefore(firstWaitingItem?.orderKey ?? targetItem.orderKey),
+      updatedAt: timestamp
+    };
+
+    await db.collection(QUEUE_COLLECTION).doc(queueItemId).update({
+      orderKey: prioritizedItem.orderKey,
+      updatedAt: prioritizedItem.updatedAt
+    });
+    await db.collection(ROOM_COLLECTION).doc(code).update({ updatedAt: timestamp });
+
+    return prioritizedItem;
   }
 
   async function markDone(sessionCode: string, queueItemId: string): Promise<QueueItem> {
@@ -682,6 +750,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     joinQueue,
     watchQueue,
     callNext,
+    prioritizeQueueItem,
     markDone,
     repeatCall,
     removeQueueItem,
@@ -698,6 +767,7 @@ export const verifyTeacherPin = defaultService.verifyTeacherPin;
 export const joinQueue = defaultService.joinQueue;
 export const watchQueue = defaultService.watchQueue;
 export const callNext = defaultService.callNext;
+export const prioritizeQueueItem = defaultService.prioritizeQueueItem;
 export const markDone = defaultService.markDone;
 export const repeatCall = defaultService.repeatCall;
 export const removeQueueItem = defaultService.removeQueueItem;

@@ -11,6 +11,7 @@ import {
   clearQueue,
   markDone,
   normalizeSessionCode,
+  prioritizeQueueItem,
   removeQueueItem,
   repeatCall,
   verifyTeacherPin,
@@ -163,6 +164,13 @@ async function handleRemove(item: QueueItem) {
   });
 }
 
+async function handlePrioritize(item: QueueItem) {
+  await runAction(async () => {
+    const prioritized = await prioritizeQueueItem(sessionCode.value, item._id);
+    showNotice('info', `已将 ${prioritized.studentNo} 号排到最前`);
+  });
+}
+
 async function handleClearQueue() {
   const confirmed = window.confirm('确定要清空等待队列并移除当前叫到的学生吗？');
 
@@ -271,7 +279,10 @@ onBeforeUnmount(() => {
           <li v-for="(student, index) in waiting" :key="student._id">
             <span class="queue-index">{{ index + 1 }}</span>
             <strong>{{ student.studentNo }}</strong>
-            <button type="button" @click="handleRemove(student)">删除</button>
+            <div class="queue-actions">
+              <button type="button" :disabled="isBusy || index === 0" @click="handlePrioritize(student)">置顶</button>
+              <button type="button" :disabled="isBusy" @click="handleRemove(student)">删除</button>
+            </div>
           </li>
         </ol>
 

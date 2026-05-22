@@ -273,6 +273,37 @@ describe('cloudbaseService', () => {
     expect(next).toMatchObject({ studentNo: '8', status: 'current' });
   });
 
+  it('moves a waiting student to the front without changing the current student or other waiting order', async () => {
+    const { service } = createFakeService();
+    await service.createRoom('课堂');
+    const currentStudent = await service.joinQueue('A7K2', '7');
+    const firstWaitingStudent = await service.joinQueue('A7K2', '8');
+    const prioritizedStudent = await service.joinQueue('A7K2', '9');
+    await service.callNext('A7K2');
+
+    const prioritized = await service.prioritizeQueueItem('A7K2', prioritizedStudent._id);
+
+    expect(prioritized).toMatchObject({
+      studentNo: '9',
+      status: 'waiting',
+      createdAt: prioritizedStudent.createdAt
+    });
+    expect(prioritized.orderKey.localeCompare(firstWaitingStudent.orderKey)).toBeLessThan(0);
+
+    const snapshots: QueueSnapshot[] = [];
+    const stopWatching = await service.watchQueue('A7K2', (snapshot) => {
+      snapshots.push(snapshot);
+    });
+    stopWatching();
+
+    expect(snapshots[0].current).toMatchObject({ studentNo: '7', status: 'current' });
+    expect(snapshots[0].waiting.map((item) => item.studentNo)).toEqual(['9', '8']);
+
+    await service.markDone('A7K2', currentStudent._id);
+    const next = await service.callNext('A7K2');
+    expect(next).toMatchObject({ studentNo: '9', status: 'current' });
+  });
+
   it('increments announce version for repeat calls without changing queue state', async () => {
     const { db, service } = createFakeService();
     await service.createRoom('课堂');
