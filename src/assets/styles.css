@@ -498,6 +498,7 @@ h2 {
 .input-display {
   display: grid;
   align-content: center;
+  gap: 10px;
   padding: 20px;
   border: 2px solid #dfe6dd;
   background: #ffffff;
@@ -514,6 +515,13 @@ h2 {
   color: #171f1a;
   font-size: clamp(2.4rem, 5vw, 4.8rem);
   line-height: 1;
+}
+
+.input-display__copy {
+  width: fit-content;
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 1rem;
 }
 
 .primary-actions {

@@ -36,6 +36,7 @@ const teacherPinInput = ref('');
 const isTeacherAuthorized = ref(false);
 let stopWatching: (() => void) | null = null;
 
+const roomTitle = computed(() => room.value?.title ?? '背书排号');
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
 
 function showNotice(kind: NoticeKind, text: string) {
@@ -116,6 +117,7 @@ async function authorizeTeacher() {
     }
 
     isTeacherAuthorized.value = true;
+    teacherPinInput.value = normalizedTeacherPin;
     rememberTeacherPinAuthorization(sessionCode.value, normalizedTeacherPin);
     showNotice('success', '老师 PIN 已验证');
     await startWatching();
@@ -123,6 +125,20 @@ async function authorizeTeacher() {
     showNotice('warning', getErrorMessage(error));
   } finally {
     isBusy.value = false;
+  }
+}
+
+async function handleCopyRoomInfo() {
+  const pinCode = normalizeTeacherPin(teacherPinInput.value);
+  const text = `任务名：${roomTitle.value}
+房间号：${sessionCode.value}
+PIN 码：${pinCode}`;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    showNotice('success', '已复制房间信息');
+  } catch {
+    showNotice('warning', '复制失败，请手动复制');
   }
 }
 
@@ -203,7 +219,7 @@ onBeforeUnmount(() => {
     <header class="page-header run-header">
       <div>
         <p class="eyebrow">老师端 · {{ sessionCode }}</p>
-        <h1>{{ room?.title ?? '背书排号' }}</h1>
+        <h1>{{ roomTitle }}</h1>
       </div>
       <div class="header-actions">
         <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
@@ -247,6 +263,9 @@ onBeforeUnmount(() => {
         <span>房间码</span>
         <strong>{{ sessionCode }}</strong>
         <span v-if="teacherPinInput">老师 PIN：{{ teacherPinInput }}</span>
+        <button class="button button--secondary input-display__copy" type="button" @click="handleCopyRoomInfo">
+          复制
+        </button>
       </div>
 
       <div class="primary-actions">
