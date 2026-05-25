@@ -10,7 +10,9 @@ import { useRoute } from 'vue-router';
 import { APP_WELCOME_TITLE, currentRoom, formatRoomTitle } from '@/features/recitation/room';
 
 const route = useRoute();
-const isRoomRoute = computed(() => route.name === 'recitation-student' || route.name === 'recitation-teacher');
+const isRoomRoute = computed(
+  () => route.name === 'recitation-student' || route.name === 'recitation-student-join' || route.name === 'recitation-teacher'
+);
 const bannerTitle = computed(() =>
   isRoomRoute.value && currentRoom.roomCode ? formatRoomTitle(currentRoom) : APP_WELCOME_TITLE
 );

@@ -24,6 +24,12 @@ export const router = createRouter({
       meta: { title: '学生端' }
     },
     {
+      path: '/student/:joinCode',
+      name: 'recitation-student-join',
+      component: RecitationStudentView,
+      meta: { title: '学生端' }
+    },
+    {
       path: '/recitation/:sessionCode/student',
       name: 'recitation-student',
       component: RecitationStudentView,

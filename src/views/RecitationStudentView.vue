@@ -3,7 +3,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router';
 import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import { STUDENT_NO_VALIDATION_MESSAGE, normalizeStudentNo } from '@/features/recitation/sessionLogic';
-import { joinQueue, normalizeSessionCode, watchQueue, type QueueItem, type Room } from '@/services/cloudbaseService';
+import {
+  getRoomByStudentJoinCode,
+  joinQueue,
+  normalizeSessionCode,
+  normalizeStudentJoinCode,
+  watchQueue,
+  type QueueItem,
+  type Room
+} from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
 
 type NoticeKind = 'success' | 'warning' | 'info';
@@ -37,6 +45,8 @@ const PREFERRED_CHINESE_VOICE_KEYWORDS = [
 
 const route = useRoute();
 const sessionCode = computed(() => normalizeSessionCode(String(route.params.sessionCode ?? '')));
+const joinCode = computed(() => normalizeStudentJoinCode(String(route.params.joinCode ?? route.query.joinCode ?? '')));
+const activeSessionCode = ref('');
 const studentInput = ref('');
 const lastDigitsOnlyStudentInput = ref('');
 const studentNoInput = ref<HTMLInputElement | null>(null);
@@ -371,7 +381,12 @@ async function submitStudentNo() {
   notice.value = null;
 
   try {
-    const item = await joinQueue(sessionCode.value, trimmedStudentInput);
+    if (!activeSessionCode.value) {
+      showNotice('warning', '未找到该排队入口');
+      return;
+    }
+
+    const item = await joinQueue(activeSessionCode.value, trimmedStudentInput);
     ownStudentNo.value = item.studentNo;
     studentInput.value = '';
     lastDigitsOnlyStudentInput.value = '';
@@ -408,12 +423,42 @@ watch([currentStudentNo, nextStudentNo, announceVersion], ([newCurrentNo, newNex
   announceCall(newCurrentNo, newNextNo);
 });
 
+async function resolveStudentRoom(): Promise<string | null> {
+  if (!joinCode.value) {
+    return sessionCode.value || null;
+  }
+
+  const targetRoom = await getRoomByStudentJoinCode(joinCode.value);
+
+  if (!targetRoom) {
+    showNotice('warning', '未找到该排队入口');
+    return null;
+  }
+
+  if (!targetRoom.joinEnabled) {
+    showNotice('warning', '当前房间暂未开放排队');
+    return null;
+  }
+
+  room.value = targetRoom;
+  setCurrentRoom(targetRoom);
+  return targetRoom.sessionCode;
+}
+
 onMounted(async () => {
   setupSpeechVoices();
 
   try {
+    const resolvedSessionCode = await resolveStudentRoom();
+
+    if (!resolvedSessionCode) {
+      isWatching.value = false;
+      return;
+    }
+
+    activeSessionCode.value = resolvedSessionCode;
     stopWatching = await watchQueue(
-      sessionCode.value,
+      resolvedSessionCode,
       (snapshot) => {
         if (!hasReceivedInitialQueueSnapshot) {
           lastAnnouncedCurrentNo.value = snapshot.current?.studentNo ?? snapshot.room.currentStudentNo ?? null;

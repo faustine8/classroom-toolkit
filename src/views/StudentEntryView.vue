@@ -2,14 +2,17 @@
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { setCurrentRoom } from '@/features/recitation/room';
-import { getRoom, normalizeSessionCode } from '@/services/cloudbaseService';
+import {
+  getRoomByStudentJoinCode,
+  normalizeStudentJoinCode
+} from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
 
 type NoticeKind = 'success' | 'warning' | 'info';
 
 const route = useRoute();
 const router = useRouter();
-const roomCodeInput = ref('');
+const joinCodeInput = ref('');
 const isEntering = ref(false);
 const notice = ref<{ kind: NoticeKind; text: string } | null>(null);
 
@@ -17,15 +20,15 @@ function showNotice(kind: NoticeKind, text: string) {
   notice.value = { kind, text };
 }
 
-async function enterStudentRoom(roomCodeValue = roomCodeInput.value) {
+async function enterStudentRoom(joinCodeValue = joinCodeInput.value) {
   if (isEntering.value) {
     return;
   }
 
-  const sessionCode = normalizeSessionCode(roomCodeValue);
+  const joinCode = normalizeStudentJoinCode(joinCodeValue);
 
-  if (!sessionCode) {
-    showNotice('warning', '请输入房间码');
+  if (!joinCode) {
+    showNotice('warning', '请输入排队码');
     return;
   }
 
@@ -33,15 +36,20 @@ async function enterStudentRoom(roomCodeValue = roomCodeInput.value) {
   notice.value = null;
 
   try {
-    const room = await getRoom(sessionCode);
+    const room = await getRoomByStudentJoinCode(joinCode);
 
     if (!room) {
-      showNotice('warning', '未找到该房间');
+      showNotice('warning', '未找到该排队入口');
+      return;
+    }
+
+    if (!room.joinEnabled) {
+      showNotice('warning', '当前房间暂未开放排队');
       return;
     }
 
     setCurrentRoom(room);
-    await router.push({ name: 'recitation-student', params: { sessionCode: room.sessionCode } });
+    await router.push({ name: 'recitation-student-join', params: { joinCode } });
   } catch (error) {
     showNotice('warning', getErrorMessage(error));
   } finally {
@@ -50,15 +58,15 @@ async function enterStudentRoom(roomCodeValue = roomCodeInput.value) {
 }
 
 onMounted(() => {
-  const queryRoomCode = typeof route.query.roomCode === 'string' ? route.query.roomCode : '';
-  const normalizedRoomCode = normalizeSessionCode(queryRoomCode);
+  const queryJoinCode = typeof route.query.joinCode === 'string' ? route.query.joinCode : '';
+  const normalizedJoinCode = normalizeStudentJoinCode(queryJoinCode);
 
-  if (!normalizedRoomCode) {
+  if (!normalizedJoinCode) {
     return;
   }
 
-  roomCodeInput.value = normalizedRoomCode;
-  void enterStudentRoom(normalizedRoomCode);
+  joinCodeInput.value = normalizedJoinCode;
+  void enterStudentRoom(normalizedJoinCode);
 });
 </script>
 
@@ -69,15 +77,15 @@ onMounted(() => {
       <h1>欢迎使用博雅背诵排号</h1>
 
       <form class="student-entry-form" @submit.prevent="enterStudentRoom()">
-        <label for="student-entry-room-code">请输入房间码</label>
+        <label for="student-entry-join-code">请输入排队码</label>
         <input
-          id="student-entry-room-code"
-          v-model="roomCodeInput"
+          id="student-entry-join-code"
+          v-model="joinCodeInput"
           autocomplete="off"
           maxlength="8"
-          placeholder="请输入房间码"
+          placeholder="请输入排队码"
           type="text"
-          @input="roomCodeInput = normalizeSessionCode(roomCodeInput)"
+          @input="joinCodeInput = normalizeStudentJoinCode(joinCodeInput)"
         />
         <button class="button button--primary" :disabled="isEntering" type="submit">
           {{ isEntering ? '进入中...' : '进入房间' }}

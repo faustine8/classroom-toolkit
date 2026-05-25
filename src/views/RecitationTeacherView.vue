@@ -10,10 +10,13 @@ import {
 import {
   callNext,
   clearQueue,
+  disableStudentJoin,
+  enableStudentJoin,
   getRoom,
   markDone,
   normalizeSessionCode,
   prioritizeQueueItem,
+  refreshStudentJoinCode,
   removeQueueItem,
   repeatCall,
   verifyTeacherPin,
@@ -40,6 +43,8 @@ let stopWatching: (() => void) | null = null;
 
 const roomTitle = computed(() => formatRoomTitle(room.value ?? currentRoom));
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
+const studentJoinCode = computed(() => room.value?.studentJoinCode ?? '');
+const joinStatusText = computed(() => (room.value?.joinEnabled ? '排队已开放' : '排队未开放'));
 
 function showNotice(kind: NoticeKind, text: string) {
   notice.value = { kind, text };
@@ -153,20 +158,25 @@ PIN 码：${pinCode}`;
   }
 }
 
-function buildStudentEntryUrl(): string {
+function buildStudentEntryUrl(joinCode: string): string {
   if (typeof window === 'undefined') {
     return '';
   }
 
-  return `${window.location.origin}${window.location.pathname}#/student?roomCode=${encodeURIComponent(sessionCode.value)}`;
+  return `${window.location.origin}${window.location.pathname}#/student?joinCode=${encodeURIComponent(joinCode)}`;
 }
 
 async function handleCopyStudentEntry() {
-  const text = `${roomTitle.value} 背诵排队入口：
-${buildStudentEntryUrl()}
+  if (!studentJoinCode.value || !room.value?.joinEnabled) {
+    showNotice('warning', '请先开启本节课排队');
+    return;
+  }
 
-房间码：${sessionCode.value}
-请打开学生端页面，输入房间码进入排队。`;
+  const text = `${roomTitle.value} 背诵排队入口：
+${buildStudentEntryUrl(studentJoinCode.value)}
+
+排队码：${studentJoinCode.value}
+请打开学生端页面，输入排队码进入排队。`;
 
   try {
     await navigator.clipboard.writeText(text);
@@ -174,6 +184,39 @@ ${buildStudentEntryUrl()}
   } catch {
     showNotice('warning', '复制失败，请手动复制学生入口');
   }
+}
+
+async function handleEnableStudentJoin() {
+  await runAction(async () => {
+    const updatedRoom = await enableStudentJoin(sessionCode.value);
+    room.value = updatedRoom;
+    setCurrentRoom(updatedRoom);
+    showNotice('success', '本节课排队已开启');
+  });
+}
+
+async function handleDisableStudentJoin() {
+  await runAction(async () => {
+    const updatedRoom = await disableStudentJoin(sessionCode.value);
+    room.value = updatedRoom;
+    setCurrentRoom(updatedRoom);
+    showNotice('info', '排队已关闭');
+  });
+}
+
+async function handleRefreshStudentJoinCode() {
+  const confirmed = window.confirm('刷新后旧的学生入口将失效，是否继续？');
+
+  if (!confirmed) {
+    return;
+  }
+
+  await runAction(async () => {
+    const updatedRoom = await refreshStudentJoinCode(sessionCode.value);
+    room.value = updatedRoom;
+    setCurrentRoom(updatedRoom);
+    showNotice('success', '学生入口已刷新');
+  });
 }
 
 async function handleCallNext() {
@@ -257,7 +300,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="header-actions">
         <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
-        <RouterLink class="button button--ghost" :to="{ name: 'recitation-student', params: { sessionCode } }">
+        <RouterLink class="button button--ghost" :to="{ name: 'student-entry' }">
           学生端
         </RouterLink>
       </div>
@@ -298,6 +341,19 @@ onBeforeUnmount(() => {
         <span>房间码</span>
         <strong>{{ sessionCode }}</strong>
         <span v-if="teacherPinInput">老师 PIN：{{ teacherPinInput }}</span>
+        <span>学生入口：{{ joinStatusText }}</span>
+        <span v-if="studentJoinCode">排队码：{{ studentJoinCode }}</span>
+        <div class="input-display__actions">
+          <button class="button button--success input-display__copy" type="button" :disabled="isBusy" @click="handleEnableStudentJoin">
+            开启本节课排队
+          </button>
+          <button class="button button--warning input-display__copy" type="button" :disabled="isBusy" @click="handleDisableStudentJoin">
+            关闭排队
+          </button>
+          <button class="button button--secondary input-display__copy" type="button" :disabled="isBusy" @click="handleRefreshStudentJoinCode">
+            刷新学生入口
+          </button>
+        </div>
         <div class="input-display__actions">
           <button class="button button--secondary input-display__copy" type="button" @click="handleCopyStudentEntry">
             复制学生入口

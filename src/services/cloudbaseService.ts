@@ -15,6 +15,9 @@ export interface Room {
   subject: string;
   roomCode: string;
   pin: string;
+  studentJoinCode: string;
+  joinEnabled: boolean;
+  joinCodeUpdatedAt: string;
   title: string;
   sessionCode: string;
   currentStudentNo: string | null;
@@ -95,6 +98,7 @@ export interface CreateCloudBaseServiceOptions {
   now?: () => string;
   codeGenerator?: () => string;
   teacherPinGenerator?: () => string;
+  studentJoinCodeGenerator?: () => string;
 }
 
 const ROOM_COLLECTION = 'rooms';
@@ -105,6 +109,8 @@ const SESSION_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SESSION_CODE_LENGTH = 6;
 const TEACHER_PIN_CHARS = '0123456789';
 const TEACHER_PIN_LENGTH = 4;
+const STUDENT_JOIN_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const STUDENT_JOIN_CODE_LENGTH = 8;
 const MAX_CODE_ATTEMPTS = 16;
 
 function getEnvId(): string {
@@ -133,6 +139,16 @@ function defaultTeacherPinGenerator(): string {
   }
 
   return pin;
+}
+
+function defaultStudentJoinCodeGenerator(): string {
+  let code = '';
+
+  for (let index = 0; index < STUDENT_JOIN_CODE_LENGTH; index += 1) {
+    code += STUDENT_JOIN_CODE_CHARS[Math.floor(Math.random() * STUDENT_JOIN_CODE_CHARS.length)];
+  }
+
+  return code;
 }
 
 function getDataArray<T>(data: unknown): T[] {
@@ -238,6 +254,9 @@ function toRoom(raw: unknown, fallbackId: string): Room | null {
     subject,
     roomCode: normalizeSessionCode(String(data.roomCode ?? sessionCode)),
     pin: '',
+    studentJoinCode: normalizeStudentJoinCode(String(data.studentJoinCode ?? '')),
+    joinEnabled: data.joinEnabled === true,
+    joinCodeUpdatedAt: String(data.joinCodeUpdatedAt ?? ''),
     title: String(data.title ?? formatRoomTitle({ className, subject })),
     sessionCode,
     currentStudentNo: typeof data.currentStudentNo === 'string' ? data.currentStudentNo : null,
@@ -350,11 +369,16 @@ export function normalizeSessionCode(value: string): string {
   return value.trim().toUpperCase();
 }
 
+export function normalizeStudentJoinCode(value: string): string {
+  return value.trim().toUpperCase();
+}
+
 export function createCloudBaseService(options: CreateCloudBaseServiceOptions = {}) {
   let runtimePromise: Promise<{ app: CloudBaseAppLike; db: CloudBaseDbLike }> | null = null;
   const now = options.now ?? (() => new Date().toISOString());
   const codeGenerator = options.codeGenerator ?? defaultCodeGenerator;
   const teacherPinGenerator = options.teacherPinGenerator ?? defaultTeacherPinGenerator;
+  const studentJoinCodeGenerator = options.studentJoinCodeGenerator ?? defaultStudentJoinCodeGenerator;
   const initApp =
     options.initApp ??
     ((config: { env: string; accessKey: string }) => cloudbase.init(config) as unknown as CloudBaseAppLike);
@@ -432,6 +456,106 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const storedRoom = await getStoredRoom(sessionCode);
 
     return storedRoom?.teacherPin === teacherPin.trim();
+  }
+
+  async function getRoomByStudentJoinCode(studentJoinCode: string): Promise<Room | null> {
+    const db = await getDb();
+    const normalizedJoinCode = normalizeStudentJoinCode(studentJoinCode);
+
+    if (!normalizedJoinCode) {
+      return null;
+    }
+
+    const result = await db
+      .collection(ROOM_COLLECTION)
+      .where({ studentJoinCode: normalizedJoinCode })
+      .limit(1)
+      .get();
+
+    return toRoom(result.data, normalizedJoinCode);
+  }
+
+  async function createUniqueStudentJoinCode(): Promise<string> {
+    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
+      const studentJoinCode = normalizeStudentJoinCode(studentJoinCodeGenerator());
+      if (!studentJoinCode) {
+        continue;
+      }
+      const existingRoom = await getRoomByStudentJoinCode(studentJoinCode);
+
+      if (!existingRoom) {
+        return studentJoinCode;
+      }
+    }
+
+    throw new Error('学生排队码生成失败，请重试');
+  }
+
+  async function enableStudentJoin(sessionCode: string): Promise<Room> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+    const room = requireRoom(await getRoom(code), code);
+    const timestamp = now();
+    const studentJoinCode = room.studentJoinCode || (await createUniqueStudentJoinCode());
+    const updatedRoom: Room = {
+      ...room,
+      studentJoinCode,
+      joinEnabled: true,
+      joinCodeUpdatedAt: room.studentJoinCode && room.joinCodeUpdatedAt ? room.joinCodeUpdatedAt : timestamp,
+      updatedAt: timestamp
+    };
+
+    await db.collection(ROOM_COLLECTION).doc(code).update({
+      studentJoinCode: updatedRoom.studentJoinCode,
+      joinEnabled: updatedRoom.joinEnabled,
+      joinCodeUpdatedAt: updatedRoom.joinCodeUpdatedAt,
+      updatedAt: updatedRoom.updatedAt
+    });
+
+    return updatedRoom;
+  }
+
+  async function disableStudentJoin(sessionCode: string): Promise<Room> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+    const room = requireRoom(await getRoom(code), code);
+    const timestamp = now();
+    const updatedRoom: Room = {
+      ...room,
+      joinEnabled: false,
+      updatedAt: timestamp
+    };
+
+    await db.collection(ROOM_COLLECTION).doc(code).update({
+      joinEnabled: false,
+      updatedAt: timestamp
+    });
+
+    return updatedRoom;
+  }
+
+  async function refreshStudentJoinCode(sessionCode: string): Promise<Room> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+    const room = requireRoom(await getRoom(code), code);
+    const timestamp = now();
+    const studentJoinCode = await createUniqueStudentJoinCode();
+    const updatedRoom: Room = {
+      ...room,
+      studentJoinCode,
+      joinEnabled: true,
+      joinCodeUpdatedAt: timestamp,
+      updatedAt: timestamp
+    };
+
+    await db.collection(ROOM_COLLECTION).doc(code).update({
+      studentJoinCode,
+      joinEnabled: true,
+      joinCodeUpdatedAt: timestamp,
+      updatedAt: timestamp
+    });
+
+    return updatedRoom;
   }
 
   async function getQueueItem(queueItemId: string, room?: Room): Promise<QueueItem | null> {
@@ -542,6 +666,9 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
         subject: roomInput.subject,
         roomCode: sessionCode,
         pin: teacherPin,
+        studentJoinCode: '',
+        joinEnabled: false,
+        joinCodeUpdatedAt: '',
         title: roomInput.title,
         sessionCode,
         teacherPin,
@@ -557,6 +684,9 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
         subject: room.subject,
         roomCode: room.roomCode,
         pin: room.pin,
+        studentJoinCode: room.studentJoinCode,
+        joinEnabled: room.joinEnabled,
+        joinCodeUpdatedAt: room.joinCodeUpdatedAt,
         title: room.title,
         sessionCode: room.sessionCode,
         teacherPin: room.teacherPin,
@@ -576,6 +706,10 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
     const room = requireRoom(await getRoom(code), code);
+
+    if (!room.joinEnabled) {
+      throw new Error('当前房间暂未开放排队');
+    }
 
     const studentNo = requireStudentNo(displayNo);
     const queueItemId = buildQueueItemId(room.id, studentNo);
@@ -866,6 +1000,10 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     createRoom,
     getRoom,
     verifyTeacherPin,
+    getRoomByStudentJoinCode,
+    enableStudentJoin,
+    disableStudentJoin,
+    refreshStudentJoinCode,
     joinQueue,
     watchQueue,
     callNext,
@@ -883,6 +1021,10 @@ export const initCloudBase = defaultService.initCloudBase;
 export const createRoom = defaultService.createRoom;
 export const getRoom = defaultService.getRoom;
 export const verifyTeacherPin = defaultService.verifyTeacherPin;
+export const getRoomByStudentJoinCode = defaultService.getRoomByStudentJoinCode;
+export const enableStudentJoin = defaultService.enableStudentJoin;
+export const disableStudentJoin = defaultService.disableStudentJoin;
+export const refreshStudentJoinCode = defaultService.refreshStudentJoinCode;
 export const joinQueue = defaultService.joinQueue;
 export const watchQueue = defaultService.watchQueue;
 export const callNext = defaultService.callNext;

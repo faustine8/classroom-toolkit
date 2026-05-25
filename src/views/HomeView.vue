@@ -6,7 +6,15 @@ import {
   rememberTeacherPinAuthorization
 } from '@/features/recitation/teacherPinAuth';
 import { setCurrentRoom } from '@/features/recitation/room';
-import { createRoom, getRoom, normalizeSessionCode, verifyTeacherPin, type CreatedRoom } from '@/services/cloudbaseService';
+import {
+  createRoom,
+  getRoom,
+  getRoomByStudentJoinCode,
+  normalizeSessionCode,
+  normalizeStudentJoinCode,
+  verifyTeacherPin,
+  type CreatedRoom
+} from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
 
 type NoticeKind = 'success' | 'warning' | 'info';
@@ -16,7 +24,7 @@ const classNameInput = ref('');
 const subjectInput = ref('');
 const teacherRoomCode = ref('');
 const teacherPin = ref('');
-const studentRoomCode = ref('');
+const studentJoinCode = ref('');
 const createdRoom = ref<CreatedRoom | null>(null);
 const isCreating = ref(false);
 const isEnteringTeacherRoom = ref(false);
@@ -146,10 +154,10 @@ async function enterStudentRoom() {
     return;
   }
 
-  const sessionCode = normalizeSessionCode(studentRoomCode.value);
+  const joinCode = normalizeStudentJoinCode(studentJoinCode.value);
 
-  if (!sessionCode) {
-    showNotice('warning', '请输入房间码');
+  if (!joinCode) {
+    showNotice('warning', '请输入排队码');
     return;
   }
 
@@ -157,15 +165,20 @@ async function enterStudentRoom() {
   notice.value = null;
 
   try {
-    const room = await getRoom(sessionCode);
+    const room = await getRoomByStudentJoinCode(joinCode);
 
     if (!room) {
-      showNotice('warning', '未找到该房间');
+      showNotice('warning', '未找到该排队入口');
+      return;
+    }
+
+    if (!room.joinEnabled) {
+      showNotice('warning', '当前房间暂未开放排队');
       return;
     }
 
     setCurrentRoom(room);
-    await router.push({ name: 'student-entry', query: { roomCode: room.sessionCode } });
+    await router.push({ name: 'recitation-student-join', params: { joinCode } });
   } catch (error) {
     showNotice('warning', getErrorMessage(error));
   } finally {
@@ -255,15 +268,15 @@ async function enterStudentRoom() {
       <form class="create-panel" @submit.prevent="enterStudentRoom">
         <span class="tool-card__tag">学生端</span>
         <h2>加入排队</h2>
-        <label for="student-room-code">房间码</label>
+        <label for="student-join-code">排队码</label>
         <input
-          id="student-room-code"
-          v-model="studentRoomCode"
+          id="student-join-code"
+          v-model="studentJoinCode"
           autocomplete="off"
           maxlength="8"
-          placeholder="请输入房间码"
+          placeholder="请输入排队码"
           type="text"
-          @input="studentRoomCode = normalizeSessionCode(studentRoomCode)"
+          @input="studentJoinCode = normalizeStudentJoinCode(studentJoinCode)"
         />
         <button class="button button--secondary" :disabled="isEnteringStudentRoom" type="submit">
           {{ isEnteringStudentRoom ? '进入中...' : '进入学生端' }}

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DUPLICATE_STUDENT_NO_MESSAGE, STUDENT_NO_VALIDATION_MESSAGE } from '../features/recitation/sessionLogic';
-import { createCloudBaseService, normalizeSessionCode, type QueueSnapshot } from './cloudbaseService';
+import {
+  createCloudBaseService,
+  normalizeSessionCode,
+  normalizeStudentJoinCode,
+  type QueueSnapshot
+} from './cloudbaseService';
 
 type DocData = Record<string, unknown>;
 
@@ -157,10 +162,17 @@ function createFakeService() {
       .mockReturnValueOnce('2026-05-21T00:02:00.000Z')
       .mockReturnValue('2026-05-21T00:03:00.000Z'),
     codeGenerator: vi.fn().mockReturnValue('A7K2'),
-    teacherPinGenerator: vi.fn().mockReturnValue('1357')
+    teacherPinGenerator: vi.fn().mockReturnValue('1357'),
+    studentJoinCodeGenerator: vi.fn().mockReturnValueOnce('K8P3XQ7A').mockReturnValue('M9R4TQ8B')
   });
 
   return { db, service };
+}
+
+async function createOpenRoom(service: ReturnType<typeof createFakeService>['service']) {
+  const room = await service.createRoom('课堂');
+  await service.enableStudentJoin(room.sessionCode);
+  return room;
 }
 
 describe('cloudbaseService', () => {
@@ -215,6 +227,9 @@ describe('cloudbaseService', () => {
       subject: '语文',
       roomCode: 'A7K2',
       pin: '1357',
+      studentJoinCode: '',
+      joinEnabled: false,
+      joinCodeUpdatedAt: '',
       title: '博雅中学初二8班 · 语文',
       sessionCode: 'A7K2',
       teacherPin: '1357',
@@ -230,6 +245,9 @@ describe('cloudbaseService', () => {
         subject: '语文',
         roomCode: 'A7K2',
         pin: '1357',
+        studentJoinCode: '',
+        joinEnabled: false,
+        joinCodeUpdatedAt: '',
         title: '博雅中学初二8班 · 语文',
         sessionCode: 'A7K2',
         teacherPin: '1357'
@@ -249,7 +267,7 @@ describe('cloudbaseService', () => {
     db.collection('rooms').shouldThrowWhenMissing = true;
     db.collection('queueItems').shouldThrowWhenMissing = true;
 
-    const room = await service.createRoom('课堂');
+    const room = await createOpenRoom(service);
     const joined = await service.joinQueue(room.sessionCode, '7');
 
     expect(room.sessionCode).toBe('A7K2');
@@ -266,13 +284,68 @@ describe('cloudbaseService', () => {
     await expect(service.getRoom('A7K2')).resolves.toMatchObject({ pin: '' });
   });
 
+  it('opens, closes, and refreshes student join codes', async () => {
+    const { service } = createFakeService();
+    await service.createRoom('课堂');
+
+    await expect(service.joinQueue('A7K2', '7')).rejects.toThrow('当前房间暂未开放排队');
+
+    const openedRoom = await service.enableStudentJoin('A7K2');
+
+    expect(openedRoom).toMatchObject({
+      studentJoinCode: 'K8P3XQ7A',
+      joinEnabled: true,
+      joinCodeUpdatedAt: '2026-05-21T00:01:00.000Z'
+    });
+    await expect(service.getRoomByStudentJoinCode(' k8p3xq7a ')).resolves.toMatchObject({
+      id: 'A7K2',
+      joinEnabled: true
+    });
+
+    const disabledRoom = await service.disableStudentJoin('A7K2');
+
+    expect(disabledRoom).toMatchObject({ studentJoinCode: 'K8P3XQ7A', joinEnabled: false });
+    await expect(service.joinQueue('A7K2', '7')).rejects.toThrow('当前房间暂未开放排队');
+
+    const refreshedRoom = await service.refreshStudentJoinCode('A7K2');
+
+    expect(refreshedRoom).toMatchObject({
+      studentJoinCode: 'M9R4TQ8B',
+      joinEnabled: true,
+      joinCodeUpdatedAt: '2026-05-21T00:03:00.000Z'
+    });
+  });
+
+  it('invalidates old student join codes after refresh', async () => {
+    const db = new FakeDb();
+    const service = createCloudBaseService({
+      envId: 'test-env',
+      publishableKey: 'pk_test',
+      initApp: () => ({ database: () => db }),
+      now: vi.fn().mockReturnValue('2026-05-21T00:00:00.000Z'),
+      codeGenerator: vi.fn().mockReturnValue('A7K2'),
+      teacherPinGenerator: vi.fn().mockReturnValue('1357'),
+      studentJoinCodeGenerator: vi.fn().mockReturnValueOnce('K8P3XQ7A').mockReturnValueOnce('M9R4TQ8B')
+    });
+
+    await service.createRoom('课堂');
+    const openedRoom = await service.enableStudentJoin('A7K2');
+    const refreshedRoom = await service.refreshStudentJoinCode('A7K2');
+
+    expect(openedRoom.studentJoinCode).toBe('K8P3XQ7A');
+    expect(refreshedRoom.studentJoinCode).toBe('M9R4TQ8B');
+    await expect(service.getRoomByStudentJoinCode('K8P3XQ7A')).resolves.toBeNull();
+    await expect(service.getRoomByStudentJoinCode('M9R4TQ8B')).resolves.toMatchObject({ id: 'A7K2' });
+  });
+
   it('normalizes session codes entered by students and teachers', () => {
     expect(normalizeSessionCode(' a7k2 ')).toBe('A7K2');
+    expect(normalizeStudentJoinCode(' k8p3xq7a ')).toBe('K8P3XQ7A');
   });
 
   it('blocks the same student number when it is already waiting or current', async () => {
     const { service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
 
     const firstJoin = await service.joinQueue('a7k2', '07');
     await expect(service.joinQueue('A7K2', '7')).rejects.toThrow(DUPLICATE_STUDENT_NO_MESSAGE);
@@ -287,7 +360,7 @@ describe('cloudbaseService', () => {
 
   it('limits duplicate student checks to the current room id', async () => {
     const { db, service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     await db.collection('queueItems').doc('other-room_7').set({
       roomId: 'other-room',
       roomCode: 'A7K2',
@@ -313,7 +386,7 @@ describe('cloudbaseService', () => {
 
   it('treats legacy queue items without roomId as current room items', async () => {
     const { db, service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     await db.collection('queueItems').doc('A7K2_7').set({
       roomCode: 'A7K2',
       studentNo: '7',
@@ -341,7 +414,7 @@ describe('cloudbaseService', () => {
 
   it('does not call or remove queue items from another room id', async () => {
     const { db, service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     await db.collection('queueItems').doc('other-room_6').set({
       roomId: 'other-room',
       roomCode: 'A7K2',
@@ -364,7 +437,7 @@ describe('cloudbaseService', () => {
 
   it('rejects invalid student numbers before adding queue items', async () => {
     const { service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
 
     await expect(service.joinQueue('A7K2', '')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
     await expect(service.joinQueue('A7K2', '0')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
@@ -377,7 +450,7 @@ describe('cloudbaseService', () => {
 
   it('promotes the earliest waiting student and marks the current student done', async () => {
     const { service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     const first = await service.joinQueue('A7K2', '7');
     await service.joinQueue('A7K2', '8');
 
@@ -392,7 +465,7 @@ describe('cloudbaseService', () => {
 
   it('moves a waiting student to the front without changing the current student or other waiting order', async () => {
     const { service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     const currentStudent = await service.joinQueue('A7K2', '7');
     const firstWaitingStudent = await service.joinQueue('A7K2', '8');
     const prioritizedStudent = await service.joinQueue('A7K2', '9');
@@ -423,7 +496,7 @@ describe('cloudbaseService', () => {
 
   it('increments announce version for repeat calls without changing queue state', async () => {
     const { db, service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     const first = await service.joinQueue('a7k2', '7');
     await service.callNext('A7K2');
 
@@ -445,7 +518,7 @@ describe('cloudbaseService', () => {
 
   it('clears active queue items without touching completed items', async () => {
     const { db, service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     const first = await service.joinQueue('A7K2', '7');
     await service.callNext('A7K2');
     await service.markDone('A7K2', first._id);
@@ -464,7 +537,7 @@ describe('cloudbaseService', () => {
 
   it('includes completed students in queue snapshots', async () => {
     const { service } = createFakeService();
-    await service.createRoom('课堂');
+    await createOpenRoom(service);
     const first = await service.joinQueue('A7K2', '7');
     await service.joinQueue('A7K2', '8');
     await service.callNext('A7K2');
