@@ -207,6 +207,11 @@ describe('cloudbaseService', () => {
     const room = await service.createRoom(' 五年级背书 ');
 
     expect(room).toMatchObject({
+      id: 'A7K2',
+      className: '博雅中学初二8班',
+      subject: '语文',
+      roomCode: 'A7K2',
+      pin: '1357',
       title: '五年级背书',
       sessionCode: 'A7K2',
       teacherPin: '1357',
@@ -216,7 +221,15 @@ describe('cloudbaseService', () => {
       updatedAt: '2026-05-21T00:00:00.000Z'
     });
     await expect(db.collection('rooms').doc('A7K2').get()).resolves.toMatchObject({
-      data: { title: '五年级背书', sessionCode: 'A7K2', teacherPin: '1357' }
+      data: {
+        id: 'A7K2',
+        className: '博雅中学初二8班',
+        subject: '语文',
+        roomCode: 'A7K2',
+        title: '五年级背书',
+        sessionCode: 'A7K2',
+        teacherPin: '1357'
+      }
     });
   });
 
@@ -239,6 +252,7 @@ describe('cloudbaseService', () => {
     await expect(service.verifyTeacherPin('a7k2', '1357')).resolves.toBe(true);
     await expect(service.verifyTeacherPin('A7K2', '0000')).resolves.toBe(false);
     await expect(service.getRoom('A7K2')).resolves.not.toHaveProperty('teacherPin');
+    await expect(service.getRoom('A7K2')).resolves.toMatchObject({ pin: '' });
   });
 
   it('normalizes session codes entered by students and teachers', () => {

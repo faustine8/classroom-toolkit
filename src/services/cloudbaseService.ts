@@ -4,11 +4,17 @@ import {
   STUDENT_NO_VALIDATION_MESSAGE,
   normalizeStudentNo
 } from '@/features/recitation/sessionLogic';
+import { defaultRoom, formatRoomTitle } from '@/features/recitation/room';
 
 export type QueueStatus = 'waiting' | 'current' | 'done' | 'removed';
 
 export interface Room {
   _id?: string;
+  id: string;
+  className: string;
+  subject: string;
+  roomCode: string;
+  pin: string;
   title: string;
   sessionCode: string;
   currentStudentNo: string | null;
@@ -182,10 +188,19 @@ function toRoom(raw: unknown, fallbackId: string): Room | null {
     return null;
   }
 
+  const sessionCode = normalizeSessionCode(String(data.sessionCode ?? data.roomCode ?? fallbackId));
+  const className = String(data.className ?? defaultRoom.className);
+  const subject = String(data.subject ?? defaultRoom.subject);
+
   return {
     _id: normalizeSessionCode(String(data._id ?? fallbackId)),
-    title: String(data.title ?? ''),
-    sessionCode: normalizeSessionCode(String(data.sessionCode ?? fallbackId)),
+    id: String(data.id ?? data._id ?? sessionCode),
+    className,
+    subject,
+    roomCode: normalizeSessionCode(String(data.roomCode ?? sessionCode)),
+    pin: '',
+    title: String(data.title ?? formatRoomTitle({ className, subject })),
+    sessionCode,
     currentStudentNo: typeof data.currentStudentNo === 'string' ? data.currentStudentNo : null,
     announceVersion: toNonNegativeInteger(data.announceVersion),
     createdAt: String(data.createdAt ?? ''),
@@ -196,14 +211,21 @@ function toRoom(raw: unknown, fallbackId: string): Room | null {
 function toStoredRoom(raw: unknown, fallbackId: string): StoredRoom | null {
   const room = toRoom(raw, fallbackId);
   const [data] = getDataArray<Record<string, unknown>>(raw);
+  const pin =
+    data && typeof data.teacherPin === 'string'
+      ? data.teacherPin
+      : data && typeof data.pin === 'string'
+        ? data.pin
+        : '';
 
-  if (!room || !data || typeof data.teacherPin !== 'string') {
+  if (!room || !data || !pin) {
     return null;
   }
 
   return {
     ...room,
-    teacherPin: data.teacherPin
+    pin,
+    teacherPin: pin
   };
 }
 
@@ -437,11 +459,17 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       }
 
       const timestamp = now();
+      const teacherPin = teacherPinGenerator();
       const room: CreatedRoom = {
         _id: sessionCode,
+        id: sessionCode,
+        className: defaultRoom.className,
+        subject: defaultRoom.subject,
+        roomCode: sessionCode,
+        pin: teacherPin,
         title: trimmedTitle,
         sessionCode,
-        teacherPin: teacherPinGenerator(),
+        teacherPin,
         currentStudentNo: null,
         announceVersion: 0,
         createdAt: timestamp,
@@ -449,6 +477,10 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       };
 
       await db.collection(ROOM_COLLECTION).doc(sessionCode).set({
+        id: room.id,
+        className: room.className,
+        subject: room.subject,
+        roomCode: room.roomCode,
         title: room.title,
         sessionCode: room.sessionCode,
         teacherPin: room.teacherPin,

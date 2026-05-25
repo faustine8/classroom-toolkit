@@ -1,8 +1,18 @@
 <template>
   <header class="app-banner" aria-label="班级横幅">
-    <h1>博雅中学初二8班</h1>
+    <h1>{{ bannerTitle }}</h1>
   </header>
 </template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
+import { APP_WELCOME_TITLE, currentRoom, formatRoomTitle } from '@/features/recitation/room';
+
+const route = useRoute();
+const isRoomRoute = computed(() => route.name === 'recitation-student' || route.name === 'recitation-teacher');
+const bannerTitle = computed(() => (isRoomRoute.value ? formatRoomTitle(currentRoom) : APP_WELCOME_TITLE));
+</script>
 
 <style scoped>
 .app-banner {

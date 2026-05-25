@@ -445,7 +445,6 @@ onBeforeUnmount(() => {
     <header class="page-header run-header">
       <div>
         <p class="eyebrow">学生端 · {{ sessionCode }}</p>
-        <h1>{{ room?.title ?? '背书排号' }}</h1>
       </div>
       <div class="header-actions">
         <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>

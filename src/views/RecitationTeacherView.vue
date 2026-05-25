@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { currentRoom, formatRoomTitle } from '@/features/recitation/room';
 import {
   getRememberedTeacherPin,
   normalizeTeacherPin,
@@ -36,7 +37,7 @@ const teacherPinInput = ref('');
 const isTeacherAuthorized = ref(false);
 let stopWatching: (() => void) | null = null;
 
-const roomTitle = computed(() => room.value?.title ?? '背书排号');
+const roomTitle = computed(() => formatRoomTitle(room.value ?? currentRoom));
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
 
 function showNotice(kind: NoticeKind, text: string) {
@@ -219,7 +220,6 @@ onBeforeUnmount(() => {
     <header class="page-header run-header">
       <div>
         <p class="eyebrow">老师端 · {{ sessionCode }}</p>
-        <h1>{{ roomTitle }}</h1>
       </div>
       <div class="header-actions">
         <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
