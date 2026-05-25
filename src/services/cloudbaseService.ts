@@ -1,5 +1,9 @@
 import cloudbase from '@cloudbase/js-sdk';
-import { normalizeStudentNo } from '@/features/recitation/sessionLogic';
+import {
+  DUPLICATE_STUDENT_NO_MESSAGE,
+  STUDENT_NO_VALIDATION_MESSAGE,
+  normalizeStudentNo
+} from '@/features/recitation/sessionLogic';
 
 export type QueueStatus = 'waiting' | 'current' | 'done' | 'removed';
 
@@ -155,7 +159,7 @@ function requireStudentNo(displayNo: string): string {
   const studentNo = normalizeStudentNo(displayNo);
 
   if (studentNo === null) {
-    throw new Error('请输入有效的数字学号');
+    throw new Error(STUDENT_NO_VALIDATION_MESSAGE);
   }
 
   return studentNo;
@@ -470,7 +474,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const existingItem = await getQueueItem(queueItemId);
 
     if (existingItem && ACTIVE_STATUSES.includes(existingItem.status)) {
-      throw new Error(`${studentNo} 号已经在当前学生或等待队列中`);
+      throw new Error(DUPLICATE_STUDENT_NO_MESSAGE);
     }
 
     const timestamp = now();

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DUPLICATE_STUDENT_NO_MESSAGE,
+  STUDENT_NO_VALIDATION_MESSAGE,
   addStudentToSession,
   createRecitationSession,
   finishAndNextStudent,
@@ -10,11 +12,20 @@ import {
 } from './sessionLogic';
 
 describe('recitation session logic', () => {
-  it('normalizes display numbers for de-duplication while preserving display text', () => {
+  it('normalizes valid display numbers for de-duplication while preserving display text', () => {
     expect(normalizeStudentNo('07')).toBe('7');
-    expect(normalizeStudentNo('000')).toBe('0');
+    expect(normalizeStudentNo(' 55 ')).toBe('55');
+  });
+
+  it('rejects student numbers outside the 1-55 integer range', () => {
     expect(normalizeStudentNo('')).toBeNull();
+    expect(normalizeStudentNo('0')).toBeNull();
+    expect(normalizeStudentNo('000')).toBeNull();
+    expect(normalizeStudentNo('56')).toBeNull();
+    expect(normalizeStudentNo('-1')).toBeNull();
+    expect(normalizeStudentNo('1.5')).toBeNull();
     expect(normalizeStudentNo('abc')).toBeNull();
+    expect(normalizeStudentNo('@')).toBeNull();
   });
 
   it('adds students only to the waiting queue and blocks duplicates in current plus queue', () => {
@@ -28,7 +39,18 @@ describe('recitation session logic', () => {
 
     const duplicate = addStudentToSession(first.session, '7', '2026-05-21T00:02:00.000Z');
     expect(duplicate.ok).toBe(false);
+    expect(duplicate.message).toBe(DUPLICATE_STUDENT_NO_MESSAGE);
     expect(duplicate.session.queue).toHaveLength(1);
+  });
+
+  it('uses the student number range message for invalid queue joins', () => {
+    const session = createRecitationSession('课堂', 'session-1', '2026-05-21T00:00:00.000Z');
+
+    const result = addStudentToSession(session, '56', '2026-05-21T00:01:00.000Z');
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe(STUDENT_NO_VALIDATION_MESSAGE);
+    expect(result.session.queue).toHaveLength(0);
   });
 
   it('finish calls the first waiting student when nobody is current', () => {

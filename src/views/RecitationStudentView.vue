@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { normalizeStudentNo } from '@/features/recitation/sessionLogic';
+import { STUDENT_NO_VALIDATION_MESSAGE, normalizeStudentNo } from '@/features/recitation/sessionLogic';
 import { joinQueue, normalizeSessionCode, watchQueue, type QueueItem, type Room } from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
 
@@ -9,6 +9,7 @@ type NoticeKind = 'success' | 'warning' | 'info';
 
 const VOICE_ENABLED_STORAGE_KEY = 'classroom-toolkit:recitation-voice-enabled';
 const LEGACY_CALL_ALERT_STORAGE_KEY = 'classroom-toolkit:recitation-call-alert-enabled';
+const STUDENT_NO_DIGITS_PATTERN = /^\d+$/;
 const PREFERRED_CHINESE_VOICE_KEYWORDS = [
   'Microsoft Yaoyao',
   'Microsoft Huihui',
@@ -36,6 +37,7 @@ const PREFERRED_CHINESE_VOICE_KEYWORDS = [
 const route = useRoute();
 const sessionCode = computed(() => normalizeSessionCode(String(route.params.sessionCode ?? '')));
 const studentInput = ref('');
+const lastDigitsOnlyStudentInput = ref('');
 const studentNoInput = ref<HTMLInputElement | null>(null);
 const ownStudentNo = ref('');
 const room = ref<Room | null>(null);
@@ -308,15 +310,56 @@ function handleVoiceEnabledChange() {
   }
 }
 
+function handleStudentNoBeforeInput(event: Event) {
+  const inputEvent = event as InputEvent;
+
+  if (inputEvent.isComposing || inputEvent.data === null || inputEvent.data === '') {
+    return;
+  }
+
+  if (!STUDENT_NO_DIGITS_PATTERN.test(inputEvent.data)) {
+    event.preventDefault();
+    showNotice('warning', STUDENT_NO_VALIDATION_MESSAGE);
+  }
+}
+
+function handleStudentNoPaste(event: Event) {
+  const clipboardEvent = event as ClipboardEvent;
+  const pastedText = clipboardEvent.clipboardData?.getData('text') ?? '';
+
+  if (pastedText && !STUDENT_NO_DIGITS_PATTERN.test(pastedText)) {
+    event.preventDefault();
+    showNotice('warning', STUDENT_NO_VALIDATION_MESSAGE);
+  }
+}
+
+function handleStudentNoInput(event: Event) {
+  const inputElement = event.target as HTMLInputElement | null;
+
+  if (!inputElement) {
+    return;
+  }
+
+  if (inputElement.value === '' || STUDENT_NO_DIGITS_PATTERN.test(inputElement.value)) {
+    lastDigitsOnlyStudentInput.value = inputElement.value;
+    return;
+  }
+
+  inputElement.value = lastDigitsOnlyStudentInput.value;
+  studentInput.value = lastDigitsOnlyStudentInput.value;
+  showNotice('warning', STUDENT_NO_VALIDATION_MESSAGE);
+}
+
 async function submitStudentNo() {
   if (isJoining.value) {
     return;
   }
 
-  const normalizedStudentNo = normalizeStudentNo(studentInput.value);
+  const trimmedStudentInput = studentInput.value.trim();
+  const normalizedStudentNo = normalizeStudentNo(trimmedStudentInput);
 
   if (normalizedStudentNo === null) {
-    showNotice('warning', '请输入有效的数字学号');
+    showNotice('warning', STUDENT_NO_VALIDATION_MESSAGE);
     return;
   }
 
@@ -324,9 +367,10 @@ async function submitStudentNo() {
   notice.value = null;
 
   try {
-    const item = await joinQueue(sessionCode.value, studentInput.value);
+    const item = await joinQueue(sessionCode.value, trimmedStudentInput);
     ownStudentNo.value = item.studentNo;
     studentInput.value = '';
+    lastDigitsOnlyStudentInput.value = '';
     showNotice('success', `${item.studentNo} 号已加入等待队列`);
     await nextTick();
     studentNoInput.value?.focus();
@@ -426,8 +470,12 @@ onBeforeUnmount(() => {
           v-model="studentInput"
           autocomplete="off"
           inputmode="numeric"
+          pattern="[0-9]*"
           placeholder="例如：7"
           type="text"
+          @beforeinput="handleStudentNoBeforeInput"
+          @input="handleStudentNoInput"
+          @paste="handleStudentNoPaste"
         />
         <button class="button button--primary" :disabled="isJoining" type="submit">
           {{ isJoining ? '加入中...' : '加入队列' }}

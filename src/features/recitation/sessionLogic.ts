@@ -26,6 +26,13 @@ export interface SessionOperationResult {
   session: RecitationSession;
 }
 
+const MIN_STUDENT_NO = 1;
+const MAX_STUDENT_NO = 55;
+const STUDENT_NO_PATTERN = /^\d+$/;
+
+export const STUDENT_NO_VALIDATION_MESSAGE = '请输入 1-55 之间的学号';
+export const DUPLICATE_STUDENT_NO_MESSAGE = '该学号已在队列中，请不要重复排队';
+
 function cloneSession(session: RecitationSession): RecitationSession {
   return {
     ...session,
@@ -43,13 +50,17 @@ function createSessionId(): string {
 export function normalizeStudentNo(displayNo: string): string | null {
   const trimmed = displayNo.trim();
 
-  if (!/^\d+$/.test(trimmed)) {
+  if (!STUDENT_NO_PATTERN.test(trimmed)) {
     return null;
   }
 
   const numericValue = Number(trimmed);
 
-  if (!Number.isFinite(numericValue)) {
+  if (
+    !Number.isInteger(numericValue) ||
+    numericValue < MIN_STUDENT_NO ||
+    numericValue > MAX_STUDENT_NO
+  ) {
     return null;
   }
 
@@ -100,7 +111,7 @@ export function addStudentToSession(
     return {
       ok: false,
       kind: 'warning',
-      message: '请输入有效的数字学号',
+      message: STUDENT_NO_VALIDATION_MESSAGE,
       session: unchanged
     };
   }
@@ -112,7 +123,7 @@ export function addStudentToSession(
     return {
       ok: false,
       kind: 'warning',
-      message: `${nextStudent.displayNo} 号已经在当前学生或等待队列中`,
+      message: DUPLICATE_STUDENT_NO_MESSAGE,
       session: unchanged
     };
   }

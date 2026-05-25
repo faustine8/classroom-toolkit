@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DUPLICATE_STUDENT_NO_MESSAGE, STUDENT_NO_VALIDATION_MESSAGE } from '../features/recitation/sessionLogic';
 import { createCloudBaseService, normalizeSessionCode, type QueueSnapshot } from './cloudbaseService';
 
 type DocData = Record<string, unknown>;
@@ -249,13 +250,26 @@ describe('cloudbaseService', () => {
     await service.createRoom('课堂');
 
     const firstJoin = await service.joinQueue('a7k2', '07');
-    await expect(service.joinQueue('A7K2', '7')).rejects.toThrow('7 号已经在当前学生或等待队列中');
+    await expect(service.joinQueue('A7K2', '7')).rejects.toThrow(DUPLICATE_STUDENT_NO_MESSAGE);
 
     expect(firstJoin).toMatchObject({
       roomCode: 'A7K2',
       studentNo: '7',
       status: 'waiting'
     });
+  });
+
+  it('rejects invalid student numbers before adding queue items', async () => {
+    const { service } = createFakeService();
+    await service.createRoom('课堂');
+
+    await expect(service.joinQueue('A7K2', '')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
+    await expect(service.joinQueue('A7K2', '0')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
+    await expect(service.joinQueue('A7K2', '56')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
+    await expect(service.joinQueue('A7K2', '-1')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
+    await expect(service.joinQueue('A7K2', '1.5')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
+    await expect(service.joinQueue('A7K2', 'abc')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
+    await expect(service.joinQueue('A7K2', '@')).rejects.toThrow(STUDENT_NO_VALIDATION_MESSAGE);
   });
 
   it('promotes the earliest waiting student and marks the current student done', async () => {

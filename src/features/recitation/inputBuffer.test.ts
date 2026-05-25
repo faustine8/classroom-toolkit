@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { getBufferAfterSubmit } from './inputBuffer';
-import type { SessionOperationResult } from './sessionLogic';
+import { DUPLICATE_STUDENT_NO_MESSAGE, type SessionOperationResult } from './sessionLogic';
 
 const failedDuplicateResult: SessionOperationResult = {
   ok: false,
   kind: 'warning',
-  message: '7 号已经在当前学生或等待队列中',
+  message: DUPLICATE_STUDENT_NO_MESSAGE,
   session: {
     id: 'session-1',
     toolType: 'recitation-queue',
