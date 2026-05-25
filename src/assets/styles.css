@@ -101,7 +101,7 @@ h2 {
 
 .room-entry-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
   align-items: start;
 }
@@ -207,7 +207,8 @@ h2 {
 }
 
 .create-page,
-.not-found-page {
+.not-found-page,
+.student-entry-page {
   display: grid;
   align-content: start;
 }
@@ -245,6 +246,20 @@ h2 {
   box-shadow: 0 0 0 4px rgba(47, 138, 97, 0.16);
 }
 
+.student-entry-panel {
+  width: min(720px, 100%);
+}
+
+.student-entry-panel h1 {
+  margin-bottom: 8px;
+  font-size: clamp(2.2rem, 4.5vw, 4rem);
+}
+
+.student-entry-form {
+  display: grid;
+  gap: 18px;
+}
+
 #join-code::placeholder {
   font-size: clamp(0.78rem, 3.5vw, 1.25rem);
 }
@@ -255,6 +270,26 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.room-result {
+  display: grid;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 2px solid #dfe6dd;
+  color: #26372d;
+  font-size: 1.08rem;
+  font-weight: 800;
+}
+
+.room-result strong {
+  color: #1d5b3b;
+  font-size: 1.3rem;
+}
+
+.room-result p {
+  margin: 4px 0 0;
+  color: #5a655e;
 }
 
 .role-toggle {
@@ -522,6 +557,12 @@ h2 {
   min-height: 44px;
   padding: 8px 14px;
   font-size: 1rem;
+}
+
+.input-display__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .primary-actions {

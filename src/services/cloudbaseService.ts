@@ -27,12 +27,18 @@ export interface CreatedRoom extends Room {
   teacherPin: string;
 }
 
+export interface CreateRoomInput {
+  className: string;
+  subject: string;
+}
+
 interface StoredRoom extends Room {
   teacherPin: string;
 }
 
 export interface QueueItem {
   _id: string;
+  roomId: string;
   roomCode: string;
   studentNo: string;
   status: QueueStatus;
@@ -96,7 +102,7 @@ const QUEUE_COLLECTION = 'queueItems';
 const ACTIVE_STATUSES: QueueStatus[] = ['waiting', 'current'];
 const SNAPSHOT_STATUSES: QueueStatus[] = ['waiting', 'current', 'done'];
 const SESSION_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const SESSION_CODE_LENGTH = 4;
+const SESSION_CODE_LENGTH = 6;
 const TEACHER_PIN_CHARS = '0123456789';
 const TEACHER_PIN_LENGTH = 4;
 const MAX_CODE_ATTEMPTS = 16;
@@ -171,6 +177,39 @@ function requireStudentNo(displayNo: string): string {
   return studentNo;
 }
 
+function normalizeCreateRoomInput(input: CreateRoomInput | string): { className: string; subject: string; title: string } {
+  if (typeof input === 'string') {
+    const trimmedTitle = input.trim();
+
+    if (!trimmedTitle) {
+      throw new Error('请输入标题');
+    }
+
+    return {
+      className: defaultRoom.className,
+      subject: defaultRoom.subject,
+      title: trimmedTitle
+    };
+  }
+
+  const className = input.className.trim();
+  const subject = input.subject.trim();
+
+  if (!className) {
+    throw new Error('请输入班级名称');
+  }
+
+  if (!subject) {
+    throw new Error('请输入科目');
+  }
+
+  return {
+    className,
+    subject,
+    title: formatRoomTitle({ className, subject })
+  };
+}
+
 function toNonNegativeInteger(value: unknown): number {
   const parsed = Number(value);
 
@@ -229,7 +268,7 @@ function toStoredRoom(raw: unknown, fallbackId: string): StoredRoom | null {
   };
 }
 
-function toQueueItem(raw: unknown): QueueItem | null {
+function toQueueItem(raw: unknown, fallbackRoomId = ''): QueueItem | null {
   const [data] = getDataArray<Record<string, unknown>>(raw);
 
   if (!data || typeof data._id !== 'string') {
@@ -238,6 +277,7 @@ function toQueueItem(raw: unknown): QueueItem | null {
 
   return {
     _id: data._id,
+    roomId: String(data.roomId ?? fallbackRoomId),
     roomCode: normalizeSessionCode(String(data.roomCode ?? '')),
     studentNo: String(data.studentNo ?? ''),
     status: data.status as QueueStatus,
@@ -247,14 +287,18 @@ function toQueueItem(raw: unknown): QueueItem | null {
   };
 }
 
-function toQueueItems(raw: unknown): QueueItem[] {
+function toQueueItems(raw: unknown, fallbackRoomId = ''): QueueItem[] {
   return getDataArray<Record<string, unknown>>(raw)
-    .map(toQueueItem)
+    .map((item) => toQueueItem(item, fallbackRoomId))
     .filter((item): item is QueueItem => item !== null);
 }
 
-function buildQueueItemId(sessionCode: string, studentNo: string): string {
-  return `${sessionCode}_${studentNo}`;
+function buildQueueItemId(roomId: string, studentNo: string): string {
+  return `${roomId}_${studentNo}`;
+}
+
+function isQueueItemInRoom(item: QueueItem, room: Room): boolean {
+  return item.roomId === room.id && item.roomCode === room.roomCode;
 }
 
 function compareQueueItems(left: QueueItem, right: QueueItem): number {
@@ -284,7 +328,7 @@ function createQueueOrderBefore(orderKey: string): string {
 }
 
 function buildQueueSnapshot(room: Room, items: QueueItem[]): QueueSnapshot {
-  const sortedItems = [...items].sort(compareQueueItems);
+  const sortedItems = items.filter((item) => isQueueItemInRoom(item, room)).sort(compareQueueItems);
   const activeItems = sortedItems.filter((item) => ACTIVE_STATUSES.includes(item.status));
   const current = activeItems.find((item) => item.status === 'current') ?? null;
   const waiting = activeItems.filter((item) => item.status === 'waiting');
@@ -390,12 +434,18 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return storedRoom?.teacherPin === teacherPin.trim();
   }
 
-  async function getQueueItem(queueItemId: string): Promise<QueueItem | null> {
+  async function getQueueItem(queueItemId: string, room?: Room): Promise<QueueItem | null> {
     const db = await getDb();
 
     try {
       const result = await db.collection(QUEUE_COLLECTION).doc(queueItemId).get();
-      return toQueueItem(result.data);
+      const item = toQueueItem(result.data, room?.id);
+
+      if (!item || (room && !isQueueItemInRoom(item, room))) {
+        return null;
+      }
+
+      return item;
     } catch (error) {
       if (isDocumentNotFoundError(error)) {
         return null;
@@ -405,49 +455,74 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     }
   }
 
-  async function getCurrentItem(sessionCode: string): Promise<QueueItem | null> {
-    const db = await getDb();
-    const result = await db
-      .collection(QUEUE_COLLECTION)
-      .where({ roomCode: normalizeSessionCode(sessionCode), status: 'current' })
-      .limit(1)
-      .get();
-
-    return toQueueItems(result.data)[0] ?? null;
-  }
-
-  async function getWaitingItems(sessionCode: string): Promise<QueueItem[]> {
-    const db = await getDb();
-    const result = await db
-      .collection(QUEUE_COLLECTION)
-      .where({ roomCode: normalizeSessionCode(sessionCode), status: 'waiting' })
-      .orderBy('createdAt', 'asc')
-      .get();
-
-    return toQueueItems(result.data).sort(compareQueueItems);
-  }
-
-  async function getSnapshotItems(sessionCode: string): Promise<QueueItem[]> {
+  async function getActiveQueueItemForStudent(room: Room, studentNo: string): Promise<QueueItem | null> {
     const db = await getDb();
     const result = await db
       .collection(QUEUE_COLLECTION)
       .where({
-        roomCode: normalizeSessionCode(sessionCode),
+        roomCode: room.roomCode,
+        status: db.command.in(ACTIVE_STATUSES)
+      })
+      .get();
+
+    return (
+      toQueueItems(result.data, room.id).find(
+        (item) => isQueueItemInRoom(item, room) && item.studentNo === studentNo
+      ) ?? null
+    );
+  }
+
+  async function getCurrentItem(room: Room): Promise<QueueItem | null> {
+    const db = await getDb();
+    const result = await db
+      .collection(QUEUE_COLLECTION)
+      .where({ roomCode: room.roomCode, status: 'current' })
+      .get();
+
+    return toQueueItems(result.data, room.id).filter((item) => isQueueItemInRoom(item, room))[0] ?? null;
+  }
+
+  async function getWaitingItems(room: Room): Promise<QueueItem[]> {
+    const db = await getDb();
+    const result = await db
+      .collection(QUEUE_COLLECTION)
+      .where({ roomCode: room.roomCode, status: 'waiting' })
+      .orderBy('createdAt', 'asc')
+      .get();
+
+    return toQueueItems(result.data, room.id).filter((item) => isQueueItemInRoom(item, room)).sort(compareQueueItems);
+  }
+
+  async function getSnapshotItems(room: Room): Promise<QueueItem[]> {
+    const db = await getDb();
+    const result = await db
+      .collection(QUEUE_COLLECTION)
+      .where({
+        roomCode: room.roomCode,
         status: db.command.in(SNAPSHOT_STATUSES)
       })
       .orderBy('createdAt', 'asc')
       .get();
 
-    return toQueueItems(result.data);
+    return toQueueItems(result.data, room.id).filter((item) => isQueueItemInRoom(item, room));
   }
 
-  async function createRoom(title: string): Promise<CreatedRoom> {
-    const trimmedTitle = title.trim();
+  async function getActiveItems(room: Room): Promise<QueueItem[]> {
+    const db = await getDb();
+    const result = await db
+      .collection(QUEUE_COLLECTION)
+      .where({
+        roomCode: room.roomCode,
+        status: db.command.in(ACTIVE_STATUSES)
+      })
+      .orderBy('createdAt', 'asc')
+      .get();
 
-    if (!trimmedTitle) {
-      throw new Error('请输入标题');
-    }
+    return toQueueItems(result.data, room.id).filter((item) => isQueueItemInRoom(item, room));
+  }
 
+  async function createRoom(input: CreateRoomInput | string): Promise<CreatedRoom> {
+    const roomInput = normalizeCreateRoomInput(input);
     const db = await getDb();
 
     for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
@@ -463,11 +538,11 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       const room: CreatedRoom = {
         _id: sessionCode,
         id: sessionCode,
-        className: defaultRoom.className,
-        subject: defaultRoom.subject,
+        className: roomInput.className,
+        subject: roomInput.subject,
         roomCode: sessionCode,
         pin: teacherPin,
-        title: trimmedTitle,
+        title: roomInput.title,
         sessionCode,
         teacherPin,
         currentStudentNo: null,
@@ -481,6 +556,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
         className: room.className,
         subject: room.subject,
         roomCode: room.roomCode,
+        pin: room.pin,
         title: room.title,
         sessionCode: room.sessionCode,
         teacherPin: room.teacherPin,
@@ -499,11 +575,11 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
   async function joinQueue(sessionCode: string, displayNo: string): Promise<QueueItem> {
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
-    requireRoom(await getRoom(code), code);
+    const room = requireRoom(await getRoom(code), code);
 
     const studentNo = requireStudentNo(displayNo);
-    const queueItemId = buildQueueItemId(code, studentNo);
-    const existingItem = await getQueueItem(queueItemId);
+    const queueItemId = buildQueueItemId(room.id, studentNo);
+    const existingItem = await getActiveQueueItemForStudent(room, studentNo);
 
     if (existingItem && ACTIVE_STATUSES.includes(existingItem.status)) {
       throw new Error(DUPLICATE_STUDENT_NO_MESSAGE);
@@ -512,7 +588,8 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const timestamp = now();
     const item: QueueItem = {
       _id: queueItemId,
-      roomCode: code,
+      roomId: room.id,
+      roomCode: room.roomCode,
       studentNo,
       status: 'waiting',
       orderKey: timestamp,
@@ -521,6 +598,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     };
 
     await db.collection(QUEUE_COLLECTION).doc(queueItemId).set({
+      roomId: item.roomId,
       roomCode: item.roomCode,
       studentNo: item.studentNo,
       status: item.status,
@@ -537,13 +615,13 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
     const room = requireRoom(await getRoom(code), code);
-    const currentItem = await getCurrentItem(code);
+    const currentItem = await getCurrentItem(room);
 
     if (room.currentStudentNo || currentItem) {
       throw new Error('请先完成当前学生，再叫下一位');
     }
 
-    const nextItem = (await getWaitingItems(code))[0];
+    const nextItem = (await getWaitingItems(room))[0];
 
     if (!nextItem) {
       throw new Error('等待队列为空，暂无可叫号学生');
@@ -557,6 +635,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     };
 
     await db.collection(QUEUE_COLLECTION).doc(nextItem._id).update({
+      roomId: room.id,
       status: updatedItem.status,
       updatedAt: updatedItem.updatedAt
     });
@@ -571,9 +650,9 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
   async function prioritizeQueueItem(sessionCode: string, queueItemId: string): Promise<QueueItem> {
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
-    requireRoom(await getRoom(code), code);
+    const room = requireRoom(await getRoom(code), code);
 
-    const waitingItems = await getWaitingItems(code);
+    const waitingItems = await getWaitingItems(room);
     const firstWaitingItem = waitingItems[0];
     const targetItem = waitingItems.find((item) => item._id === queueItemId);
 
@@ -593,6 +672,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     };
 
     await db.collection(QUEUE_COLLECTION).doc(queueItemId).update({
+      roomId: room.id,
       orderKey: prioritizedItem.orderKey,
       updatedAt: prioritizedItem.updatedAt
     });
@@ -605,9 +685,9 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
     const room = requireRoom(await getRoom(code), code);
-    const item = await getQueueItem(queueItemId);
+    const item = await getQueueItem(queueItemId, room);
 
-    if (!item || item.roomCode !== code) {
+    if (!item) {
       throw new Error('未找到该队列记录');
     }
 
@@ -619,6 +699,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     };
 
     await db.collection(QUEUE_COLLECTION).doc(queueItemId).update({
+      roomId: room.id,
       status: doneItem.status,
       updatedAt: doneItem.updatedAt
     });
@@ -634,7 +715,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
     const room = requireRoom(await getRoom(code), code);
-    const currentItem = await getCurrentItem(code);
+    const currentItem = await getCurrentItem(room);
     const currentStudentNo = room.currentStudentNo ?? currentItem?.studentNo ?? null;
 
     if (!currentStudentNo) {
@@ -658,15 +739,16 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return updatedRoom;
   }
 
-  async function removeQueueItem(queueItemId: string): Promise<QueueItem> {
+  async function removeQueueItem(sessionCode: string, queueItemId: string): Promise<QueueItem> {
     const db = await getDb();
-    const item = await getQueueItem(queueItemId);
+    const code = normalizeSessionCode(sessionCode);
+    const room = requireRoom(await getRoom(code), code);
+    const item = await getQueueItem(queueItemId, room);
 
     if (!item) {
       throw new Error('未找到该队列记录');
     }
 
-    const room = await getRoom(item.roomCode);
     const timestamp = now();
     const removedItem: QueueItem = {
       ...item,
@@ -675,17 +757,18 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     };
 
     await db.collection(QUEUE_COLLECTION).doc(queueItemId).update({
+      roomId: room.id,
       status: removedItem.status,
       updatedAt: removedItem.updatedAt
     });
 
-    if (room?.currentStudentNo === item.studentNo) {
-      await db.collection(ROOM_COLLECTION).doc(item.roomCode).update({
+    if (room.currentStudentNo === item.studentNo) {
+      await db.collection(ROOM_COLLECTION).doc(code).update({
         currentStudentNo: null,
         updatedAt: timestamp
       });
-    } else if (room) {
-      await db.collection(ROOM_COLLECTION).doc(item.roomCode).update({ updatedAt: timestamp });
+    } else {
+      await db.collection(ROOM_COLLECTION).doc(code).update({ updatedAt: timestamp });
     }
 
     return removedItem;
@@ -694,28 +777,27 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
   async function clearQueue(sessionCode: string): Promise<number> {
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
-    requireRoom(await getRoom(code), code);
+    const room = requireRoom(await getRoom(code), code);
 
     const timestamp = now();
-    const result = await db
-      .collection(QUEUE_COLLECTION)
-      .where({
-        roomCode: code,
-        status: db.command.in(ACTIVE_STATUSES)
-      })
-      .update({
-        status: 'removed',
-        updatedAt: timestamp
-      });
+    const activeItems = await getActiveItems(room);
+
+    await Promise.all(
+      activeItems.map((item) =>
+        db.collection(QUEUE_COLLECTION).doc(item._id).update({
+          roomId: room.id,
+          status: 'removed',
+          updatedAt: timestamp
+        })
+      )
+    );
 
     await db.collection(ROOM_COLLECTION).doc(code).update({
       currentStudentNo: null,
       updatedAt: timestamp
     });
 
-    return typeof result === 'object' && result !== null && 'updated' in result && typeof result.updated === 'number'
-      ? result.updated
-      : 0;
+    return activeItems.length;
   }
 
   async function watchQueue(
@@ -726,9 +808,10 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
 
-    async function emitSnapshot(items?: QueueItem[]) {
+    async function emitSnapshot(rawItems?: unknown[]) {
       const latestRoom = requireRoom(await getRoom(code), code);
-      callback(buildQueueSnapshot(latestRoom, items ?? (await getSnapshotItems(code))));
+      const items = rawItems ? toQueueItems(rawItems, latestRoom.id) : await getSnapshotItems(latestRoom);
+      callback(buildQueueSnapshot(latestRoom, items));
     }
 
     await emitSnapshot();
@@ -743,7 +826,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       .watch?.({
         onChange: async (snapshot) => {
           try {
-            await emitSnapshot(toQueueItems(snapshot.docs ?? []));
+            await emitSnapshot(snapshot.docs ?? []);
           } catch (error) {
             onError(error);
           }

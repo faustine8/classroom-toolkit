@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import HomeView from '@/views/HomeView.vue';
 import RecitationStudentView from '@/views/RecitationStudentView.vue';
 import RecitationTeacherView from '@/views/RecitationTeacherView.vue';
+import StudentEntryView from '@/views/StudentEntryView.vue';
 
 export const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -15,6 +16,12 @@ export const router = createRouter({
       path: '/recitation',
       name: 'recitation-create',
       redirect: { name: 'home' }
+    },
+    {
+      path: '/student',
+      name: 'student-entry',
+      component: StudentEntryView,
+      meta: { title: '学生端' }
     },
     {
       path: '/recitation/:sessionCode/student',

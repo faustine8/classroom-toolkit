@@ -11,7 +11,9 @@ import { APP_WELCOME_TITLE, currentRoom, formatRoomTitle } from '@/features/reci
 
 const route = useRoute();
 const isRoomRoute = computed(() => route.name === 'recitation-student' || route.name === 'recitation-teacher');
-const bannerTitle = computed(() => (isRoomRoute.value ? formatRoomTitle(currentRoom) : APP_WELCOME_TITLE));
+const bannerTitle = computed(() =>
+  isRoomRoute.value && currentRoom.roomCode ? formatRoomTitle(currentRoom) : APP_WELCOME_TITLE
+);
 </script>
 
 <style scoped>

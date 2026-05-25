@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import { STUDENT_NO_VALIDATION_MESSAGE, normalizeStudentNo } from '@/features/recitation/sessionLogic';
 import { joinQueue, normalizeSessionCode, watchQueue, type QueueItem, type Room } from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
@@ -59,6 +60,9 @@ let previousVoicesChangedHandler: SpeechSynthesis['onvoiceschanged'] = null;
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
 const nextStudentNo = computed(() => waiting.value[0]?.studentNo ?? null);
 const announceVersion = computed(() => room.value?.announceVersion ?? 0);
+const roomTitle = computed(() =>
+  room.value ? formatRoomTitle(room.value) : currentRoom.roomCode ? formatRoomTitle(currentRoom) : ''
+);
 const voiceStatusText = computed(() => (voiceEnabled.value ? '语音播报已开启' : '语音播报已关闭'));
 const ownWaitingIndex = computed(() =>
   ownStudentNo.value ? waiting.value.findIndex((item) => item.studentNo === ownStudentNo.value) : -1
@@ -418,6 +422,7 @@ onMounted(async () => {
         }
 
         room.value = snapshot.room;
+        setCurrentRoom(snapshot.room);
         current.value = snapshot.current;
         waiting.value = snapshot.waiting;
         isWatching.value = false;
@@ -444,25 +449,23 @@ onBeforeUnmount(() => {
   <main class="page run-page">
     <header class="page-header run-header">
       <div>
-        <p class="eyebrow">学生端 · {{ sessionCode }}</p>
+        <p class="eyebrow">学生端</p>
+        <h1 v-if="roomTitle">{{ roomTitle }}</h1>
       </div>
       <div class="header-actions">
-        <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
-        <RouterLink class="button button--ghost" :to="{ name: 'recitation-teacher', params: { sessionCode } }">
-          老师端
-        </RouterLink>
+        <RouterLink class="button button--secondary" :to="{ name: 'student-entry' }">更换房间</RouterLink>
       </div>
     </header>
 
     <section class="current-panel" :class="{ 'current-panel--empty': !currentStudentNo }" aria-live="polite">
       <p>当前叫到</p>
-      <strong>{{ currentStudentNo ?? '等待老师叫号' }}</strong>
+      <strong>{{ currentStudentNo ?? '等待叫号' }}</strong>
       <span v-if="currentStudentNo">学号</span>
     </section>
 
     <section class="student-join-panel">
       <form class="student-join-panel__form" @submit.prevent="submitStudentNo">
-        <label for="student-no">我的学号</label>
+        <label for="student-no">请输入你的学号排队</label>
         <input
           id="student-no"
           ref="studentNoInput"

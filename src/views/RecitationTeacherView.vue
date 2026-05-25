@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { currentRoom, formatRoomTitle } from '@/features/recitation/room';
+import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import {
   getRememberedTeacherPin,
   normalizeTeacherPin,
@@ -10,6 +10,7 @@ import {
 import {
   callNext,
   clearQueue,
+  getRoom,
   markDone,
   normalizeSessionCode,
   prioritizeQueueItem,
@@ -78,6 +79,7 @@ async function startWatching() {
       sessionCode.value,
       (snapshot) => {
         room.value = snapshot.room;
+        setCurrentRoom(snapshot.room);
         current.value = snapshot.current;
         waiting.value = snapshot.waiting;
         completedQueue.value = snapshot.completedQueue;
@@ -102,7 +104,7 @@ async function authorizeTeacher() {
   const normalizedTeacherPin = normalizeTeacherPin(teacherPinInput.value);
 
   if (!normalizedTeacherPin) {
-    showNotice('warning', '请输入老师 PIN');
+    showNotice('warning', '请输入 PIN 码');
     return;
   }
 
@@ -110,13 +112,21 @@ async function authorizeTeacher() {
   notice.value = null;
 
   try {
-    const pinMatched = await verifyTeacherPin(sessionCode.value, normalizedTeacherPin);
+    const targetRoom = await getRoom(sessionCode.value);
 
-    if (!pinMatched) {
-      showNotice('warning', '老师 PIN 不正确');
+    if (!targetRoom) {
+      showNotice('warning', '未找到该房间');
       return;
     }
 
+    const pinMatched = await verifyTeacherPin(sessionCode.value, normalizedTeacherPin);
+
+    if (!pinMatched) {
+      showNotice('warning', '房间码或 PIN 不正确');
+      return;
+    }
+
+    setCurrentRoom(targetRoom);
     isTeacherAuthorized.value = true;
     teacherPinInput.value = normalizedTeacherPin;
     rememberTeacherPinAuthorization(sessionCode.value, normalizedTeacherPin);
@@ -140,6 +150,29 @@ PIN 码：${pinCode}`;
     showNotice('success', '已复制房间信息');
   } catch {
     showNotice('warning', '复制失败，请手动复制');
+  }
+}
+
+function buildStudentEntryUrl(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return `${window.location.origin}${window.location.pathname}#/student?roomCode=${encodeURIComponent(sessionCode.value)}`;
+}
+
+async function handleCopyStudentEntry() {
+  const text = `${roomTitle.value} 背诵排队入口：
+${buildStudentEntryUrl()}
+
+房间码：${sessionCode.value}
+请打开学生端页面，输入房间码进入排队。`;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    showNotice('success', '已复制学生入口');
+  } catch {
+    showNotice('warning', '复制失败，请手动复制学生入口');
   }
 }
 
@@ -176,7 +209,7 @@ async function handleRepeatCall() {
 
 async function handleRemove(item: QueueItem) {
   await runAction(async () => {
-    const removed = await removeQueueItem(item._id);
+    const removed = await removeQueueItem(sessionCode.value, item._id);
     showNotice('info', `${removed.studentNo} 号已移除`);
   });
 }
@@ -220,6 +253,7 @@ onBeforeUnmount(() => {
     <header class="page-header run-header">
       <div>
         <p class="eyebrow">老师端 · {{ sessionCode }}</p>
+        <h1 v-if="isTeacherAuthorized">{{ roomTitle }}</h1>
       </div>
       <div class="header-actions">
         <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
@@ -238,6 +272,7 @@ onBeforeUnmount(() => {
           autocomplete="off"
           autofocus
           inputmode="numeric"
+          maxlength="6"
           placeholder="输入创建房间时生成的 PIN"
           type="password"
         />
@@ -263,9 +298,14 @@ onBeforeUnmount(() => {
         <span>房间码</span>
         <strong>{{ sessionCode }}</strong>
         <span v-if="teacherPinInput">老师 PIN：{{ teacherPinInput }}</span>
-        <button class="button button--secondary input-display__copy" type="button" @click="handleCopyRoomInfo">
-          复制
-        </button>
+        <div class="input-display__actions">
+          <button class="button button--secondary input-display__copy" type="button" @click="handleCopyStudentEntry">
+            复制学生入口
+          </button>
+          <button class="button button--ghost input-display__copy" type="button" @click="handleCopyRoomInfo">
+            复制教师信息
+          </button>
+        </div>
       </div>
 
       <div class="primary-actions">

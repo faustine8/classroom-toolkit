@@ -201,10 +201,13 @@ describe('cloudbaseService', () => {
     await expect(service.initCloudBase()).rejects.toThrow('请在 .env 中配置 VITE_CLOUDBASE_PUBLISHABLE_KEY');
   });
 
-  it('creates a room with a normalized four-character session code', async () => {
+  it('creates a fixed room with normalized room code and generated pin', async () => {
     const { db, service } = createFakeService();
 
-    const room = await service.createRoom(' 五年级背书 ');
+    const room = await service.createRoom({
+      className: ' 博雅中学初二8班 ',
+      subject: ' 语文 '
+    });
 
     expect(room).toMatchObject({
       id: 'A7K2',
@@ -212,7 +215,7 @@ describe('cloudbaseService', () => {
       subject: '语文',
       roomCode: 'A7K2',
       pin: '1357',
-      title: '五年级背书',
+      title: '博雅中学初二8班 · 语文',
       sessionCode: 'A7K2',
       teacherPin: '1357',
       currentStudentNo: null,
@@ -226,11 +229,19 @@ describe('cloudbaseService', () => {
         className: '博雅中学初二8班',
         subject: '语文',
         roomCode: 'A7K2',
-        title: '五年级背书',
+        pin: '1357',
+        title: '博雅中学初二8班 · 语文',
         sessionCode: 'A7K2',
         teacherPin: '1357'
       }
     });
+  });
+
+  it('requires class name and subject when creating a fixed room', async () => {
+    const { service } = createFakeService();
+
+    await expect(service.createRoom({ className: ' ', subject: '语文' })).rejects.toThrow('请输入班级名称');
+    await expect(service.createRoom({ className: '博雅中学初二8班', subject: ' ' })).rejects.toThrow('请输入科目');
   });
 
   it('treats missing document errors as empty rooms and queue items', async () => {
@@ -267,9 +278,87 @@ describe('cloudbaseService', () => {
     await expect(service.joinQueue('A7K2', '7')).rejects.toThrow(DUPLICATE_STUDENT_NO_MESSAGE);
 
     expect(firstJoin).toMatchObject({
+      roomId: 'A7K2',
       roomCode: 'A7K2',
       studentNo: '7',
       status: 'waiting'
+    });
+  });
+
+  it('limits duplicate student checks to the current room id', async () => {
+    const { db, service } = createFakeService();
+    await service.createRoom('课堂');
+    await db.collection('queueItems').doc('other-room_7').set({
+      roomId: 'other-room',
+      roomCode: 'A7K2',
+      studentNo: '7',
+      status: 'waiting',
+      orderKey: '2026-05-21T00:00:30.000Z',
+      createdAt: '2026-05-21T00:00:30.000Z',
+      updatedAt: '2026-05-21T00:00:30.000Z'
+    });
+
+    const joined = await service.joinQueue('A7K2', '7');
+
+    expect(joined).toMatchObject({ _id: 'A7K2_7', roomId: 'A7K2', studentNo: '7', status: 'waiting' });
+
+    const snapshots: QueueSnapshot[] = [];
+    const stopWatching = await service.watchQueue('A7K2', (snapshot) => {
+      snapshots.push(snapshot);
+    });
+    stopWatching();
+
+    expect(snapshots[0].waiting.map((item) => item._id)).toEqual(['A7K2_7']);
+  });
+
+  it('treats legacy queue items without roomId as current room items', async () => {
+    const { db, service } = createFakeService();
+    await service.createRoom('课堂');
+    await db.collection('queueItems').doc('A7K2_7').set({
+      roomCode: 'A7K2',
+      studentNo: '7',
+      status: 'waiting',
+      orderKey: '2026-05-21T00:01:00.000Z',
+      createdAt: '2026-05-21T00:01:00.000Z',
+      updatedAt: '2026-05-21T00:01:00.000Z'
+    });
+
+    const snapshots: QueueSnapshot[] = [];
+    const stopWatching = await service.watchQueue('A7K2', (snapshot) => {
+      snapshots.push(snapshot);
+    });
+    stopWatching();
+
+    expect(snapshots[0].waiting[0]).toMatchObject({ _id: 'A7K2_7', roomId: 'A7K2', studentNo: '7' });
+
+    const called = await service.callNext('A7K2');
+
+    expect(called).toMatchObject({ _id: 'A7K2_7', roomId: 'A7K2', status: 'current' });
+    await expect(db.collection('queueItems').doc('A7K2_7').get()).resolves.toMatchObject({
+      data: expect.objectContaining({ roomId: 'A7K2', status: 'current' })
+    });
+  });
+
+  it('does not call or remove queue items from another room id', async () => {
+    const { db, service } = createFakeService();
+    await service.createRoom('课堂');
+    await db.collection('queueItems').doc('other-room_6').set({
+      roomId: 'other-room',
+      roomCode: 'A7K2',
+      studentNo: '6',
+      status: 'waiting',
+      orderKey: '2026-05-21T00:00:30.000Z',
+      createdAt: '2026-05-21T00:00:30.000Z',
+      updatedAt: '2026-05-21T00:00:30.000Z'
+    });
+    const currentRoomStudent = await service.joinQueue('A7K2', '7');
+
+    const called = await service.callNext('A7K2');
+
+    expect(called).toMatchObject({ _id: currentRoomStudent._id, roomId: 'A7K2', studentNo: '7' });
+    await expect(service.removeQueueItem('A7K2', 'other-room_6')).rejects.toThrow('未找到该队列记录');
+    await expect(db.collection('queueItems').doc('other-room_6').get()).resolves.toMatchObject({
+      data: expect.objectContaining({ status: 'waiting' })
     });
   });
 
@@ -347,7 +436,7 @@ describe('cloudbaseService', () => {
       updatedAt: '2026-05-21T00:03:00.000Z'
     });
     await expect(db.collection('queueItems').doc(first._id).get()).resolves.toMatchObject({
-      data: expect.objectContaining({ status: 'current', roomCode: 'A7K2', studentNo: '7' })
+      data: expect.objectContaining({ roomId: 'A7K2', status: 'current', roomCode: 'A7K2', studentNo: '7' })
     });
     await expect(db.collection('rooms').doc('A7K2').get()).resolves.toMatchObject({
       data: expect.objectContaining({ announceVersion: 1, currentStudentNo: '7' })
