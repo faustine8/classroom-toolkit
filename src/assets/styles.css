@@ -369,7 +369,7 @@ h2 {
 }
 
 .teacher-operator-panel {
-  grid-template-columns: minmax(220px, 320px) 1fr;
+  grid-template-columns: minmax(380px, 0.85fr) minmax(420px, 1.15fr);
 }
 
 .student-join-panel {
@@ -567,6 +567,60 @@ h2 {
 
 .primary-actions {
   align-content: start;
+}
+
+.teacher-room-card {
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 16px;
+}
+
+.teacher-room-card__code,
+.teacher-room-card__meta {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.teacher-room-card__meta {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.teacher-room-card__code strong {
+  white-space: nowrap;
+}
+
+.teacher-room-card .input-display__actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+.teacher-room-card .input-display__actions--copy {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.teacher-room-card .input-display__copy {
+  width: 100%;
+}
+
+.teacher-operator-panel .primary-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(76px, 1fr);
+  align-content: stretch;
+  gap: 12px;
+  padding: 20px;
+  border: 2px solid #dfe6dd;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.teacher-operator-panel .primary-actions button {
+  width: 100%;
+  height: 100%;
+  min-height: 68px;
 }
 
 .number-pad {
@@ -821,6 +875,11 @@ h2 {
 
   .current-panel {
     min-height: 240px;
+  }
+
+  .teacher-room-card,
+  .teacher-operator-panel .primary-actions {
+    grid-template-columns: 1fr;
   }
 
   .voice-settings-panel {

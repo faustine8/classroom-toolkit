@@ -296,7 +296,6 @@ onBeforeUnmount(() => {
     <header class="page-header run-header">
       <div>
         <p class="eyebrow">老师端 · {{ sessionCode }}</p>
-        <h1 v-if="isTeacherAuthorized">{{ roomTitle }}</h1>
       </div>
       <div class="header-actions">
         <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
@@ -337,12 +336,16 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="operator-panel teacher-operator-panel">
-      <div class="input-display">
-        <span>房间码</span>
-        <strong>{{ sessionCode }}</strong>
-        <span v-if="teacherPinInput">老师 PIN：{{ teacherPinInput }}</span>
-        <span>学生入口：{{ joinStatusText }}</span>
-        <span v-if="studentJoinCode">排队码：{{ studentJoinCode }}</span>
+      <div class="input-display teacher-room-card">
+        <div class="teacher-room-card__code">
+          <span>房间码</span>
+          <strong>{{ sessionCode }}</strong>
+        </div>
+        <div class="teacher-room-card__meta">
+          <span v-if="teacherPinInput">老师 PIN：{{ teacherPinInput }}</span>
+          <span>学生入口：{{ joinStatusText }}</span>
+          <span v-if="studentJoinCode">排队码：{{ studentJoinCode }}</span>
+        </div>
         <div class="input-display__actions">
           <button class="button button--success input-display__copy" type="button" :disabled="isBusy" @click="handleEnableStudentJoin">
             开启本节课排队
@@ -354,7 +357,7 @@ onBeforeUnmount(() => {
             刷新学生入口
           </button>
         </div>
-        <div class="input-display__actions">
+        <div class="input-display__actions input-display__actions--copy">
           <button class="button button--secondary input-display__copy" type="button" @click="handleCopyStudentEntry">
             复制学生入口
           </button>

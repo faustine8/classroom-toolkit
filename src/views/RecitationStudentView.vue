@@ -495,7 +495,6 @@ onBeforeUnmount(() => {
     <header class="page-header run-header">
       <div>
         <p class="eyebrow">学生端</p>
-        <h1 v-if="roomTitle">{{ roomTitle }}</h1>
       </div>
       <div class="header-actions">
         <RouterLink class="button button--secondary" :to="{ name: 'student-entry' }">更换房间</RouterLink>
