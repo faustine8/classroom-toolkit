@@ -40,6 +40,7 @@ const notice = ref<{ kind: NoticeKind; text: string } | null>(null);
 const isBusy = ref(false);
 const isWatching = ref(false);
 const teacherPinInput = ref('');
+const roomInfoActiveNames = ref<string[]>([]);
 const isTeacherAuthorized = ref(false);
 let stopWatching: (() => void) | null = null;
 
@@ -216,7 +217,8 @@ async function handleCopyRoomInfo() {
   const pinCode = normalizeTeacherPin(teacherPinInput.value);
   const text = `任务名：${roomTitle.value}
 房间号：${sessionCode.value}
-PIN 码：${pinCode}`;
+PIN 码：${pinCode}
+排队码：${studentJoinCode.value}`;
 
   try {
     await navigator.clipboard.writeText(text);
@@ -240,11 +242,7 @@ async function handleCopyStudentEntry() {
     return;
   }
 
-  const text = `${roomTitle.value} 背诵排队入口：
-${buildStudentEntryUrl(studentJoinCode.value)}
-
-排队码：${studentJoinCode.value}
-请打开学生端页面，输入排队码进入排队。`;
+  const text = buildStudentEntryUrl(studentJoinCode.value);
 
   try {
     await navigator.clipboard.writeText(text);
@@ -355,7 +353,7 @@ onBeforeUnmount(() => {
           <div>
             <el-tag type="warning" effect="light">老师端 · {{ sessionCode }}</el-tag>
             <h1>{{ isTeacherAuthorized ? roomTitle : '教师管理' }}</h1>
-            <p>{{ isTeacherAuthorized ? '队列管理' : '请输入老师 PIN 后进入管理' }}</p>
+            <p>{{ isTeacherAuthorized ? '当前叫号与队列管理' : '请输入老师 PIN 后进入管理' }}</p>
           </div>
           <el-space wrap>
             <RouterLink custom to="/" v-slot="{ navigate }">
@@ -387,31 +385,23 @@ onBeforeUnmount(() => {
       </el-form>
 
       <template v-else>
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="房间标题">{{ roomTitle }}</el-descriptions-item>
-          <el-descriptions-item label="房间号">{{ sessionCode }}</el-descriptions-item>
-          <el-descriptions-item label="PIN 码">{{ teacherPinInput }}</el-descriptions-item>
-          <el-descriptions-item label="学生入口">
-            <el-tag :type="room?.joinEnabled ? 'success' : 'info'" effect="light">{{ joinStatusText }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item v-if="studentJoinCode" label="排队码">{{ studentJoinCode }}</el-descriptions-item>
-        </el-descriptions>
-
         <el-space class="action-row" wrap>
+          <el-tag :type="room?.joinEnabled ? 'success' : 'info'" effect="light">{{ joinStatusText }}</el-tag>
           <el-button type="success" :disabled="isBusy" @click="handleEnableStudentJoin">开启本节课排队</el-button>
           <el-button type="warning" :disabled="isBusy" @click="handleDisableStudentJoin">关闭排队</el-button>
           <el-popconfirm
+            width="260"
             title="刷新后旧的学生入口将失效，是否继续？"
             confirm-button-text="刷新"
+            confirm-button-type="danger"
             cancel-button-text="取消"
             @confirm="handleRefreshStudentJoinCode"
           >
             <template #reference>
-              <el-button :disabled="isBusy">刷新学生入口</el-button>
+              <el-button type="danger" :disabled="isBusy">刷新学生入口</el-button>
             </template>
           </el-popconfirm>
           <el-button @click="handleCopyStudentEntry">复制学生入口</el-button>
-          <el-button type="primary" @click="handleCopyRoomInfo">复制教师信息</el-button>
         </el-space>
       </template>
 
@@ -429,7 +419,7 @@ onBeforeUnmount(() => {
       <el-card class="section-card" shadow="never">
         <template #header>
           <div class="card-header card-header--split">
-            <h2>当前叫号</h2>
+            <h2>当前叫号状态</h2>
             <el-tag :type="currentStudentNo ? 'success' : 'info'" effect="light">
               {{ currentStudentNo ? '进行中' : '等待叫号' }}
             </el-tag>
@@ -450,6 +440,7 @@ onBeforeUnmount(() => {
               <el-button type="success" :disabled="isBusy || !current" @click="handleMarkDone">通过/完成</el-button>
               <el-popconfirm
                 v-if="current"
+                width="260"
                 title="确定要移除当前学生吗？"
                 confirm-button-text="移除"
                 cancel-button-text="取消"
@@ -460,6 +451,7 @@ onBeforeUnmount(() => {
                 </template>
               </el-popconfirm>
               <el-popconfirm
+                width="260"
                 title="确定要清空等待队列并移除当前叫到的学生吗？"
                 confirm-button-text="清空"
                 cancel-button-text="取消"
@@ -477,7 +469,7 @@ onBeforeUnmount(() => {
       <el-card class="section-card" shadow="never">
         <template #header>
           <div class="card-header card-header--split">
-            <h2>等待队列</h2>
+            <h2>队列管理</h2>
             <el-tag type="info" effect="plain">{{ waiting.length }} 人</el-tag>
           </div>
         </template>
@@ -501,16 +493,18 @@ onBeforeUnmount(() => {
             <template #default="{ row, $index }">
               <el-space wrap>
                 <el-popconfirm
+                  width="260"
                   title="确定要将该学生排到最前吗？"
-                  confirm-button-text="排到最前"
+                  confirm-button-text="置顶"
                   cancel-button-text="取消"
                   @confirm="handlePrioritize(row)"
                 >
                   <template #reference>
-                    <el-button size="small" type="warning" :disabled="isBusy || $index === 0">排到最前</el-button>
+                    <el-button size="small" type="warning" :disabled="isBusy || $index === 0">置顶</el-button>
                   </template>
                 </el-popconfirm>
                 <el-popconfirm
+                  width="260"
                   title="确定要移除该学生吗？"
                   confirm-button-text="移除"
                   cancel-button-text="取消"
@@ -554,6 +548,26 @@ onBeforeUnmount(() => {
         </el-table>
 
         <el-empty v-else description="暂无已通过学生" />
+      </el-card>
+
+      <el-card class="section-card" shadow="never">
+        <el-collapse v-model="roomInfoActiveNames">
+          <el-collapse-item title="房间基本信息" name="room-info">
+            <el-descriptions :column="1" border>
+              <el-descriptions-item label="房间标题">{{ roomTitle }}</el-descriptions-item>
+              <el-descriptions-item label="房间号">{{ sessionCode }}</el-descriptions-item>
+              <el-descriptions-item label="PIN 码">{{ teacherPinInput }}</el-descriptions-item>
+              <el-descriptions-item label="学生入口">
+                <el-tag :type="room?.joinEnabled ? 'success' : 'info'" effect="light">{{ joinStatusText }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item v-if="studentJoinCode" label="排队码">{{ studentJoinCode }}</el-descriptions-item>
+            </el-descriptions>
+
+            <div class="room-info-actions">
+              <el-button type="primary" @click="handleCopyRoomInfo">复制房间信息</el-button>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
       </el-card>
     </template>
   </main>

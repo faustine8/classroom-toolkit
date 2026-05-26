@@ -448,6 +448,10 @@ h2 {
   margin-top: 18px;
 }
 
+.room-info-actions {
+  margin-top: 16px;
+}
+
 .teacher-actions {
   align-content: start;
 }
