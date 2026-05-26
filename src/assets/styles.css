@@ -394,6 +394,14 @@ h2 {
   margin-top: 16px;
 }
 
+.queue-page .status-grid .el-col {
+  display: flex;
+}
+
+.queue-page .status-grid .metric-panel {
+  width: 100%;
+}
+
 .metric-panel {
   display: grid;
   gap: 8px;

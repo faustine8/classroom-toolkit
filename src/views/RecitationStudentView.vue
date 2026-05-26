@@ -51,11 +51,11 @@ const activeSessionCode = ref('');
 const studentInput = ref('');
 const lastDigitsOnlyStudentInput = ref('');
 const studentNoInput = ref<InputInstance | null>(null);
-const ownStudentNo = ref('');
 const room = ref<Room | null>(null);
 const current = ref<QueueItem | null>(null);
 const waiting = ref<QueueItem[]>([]);
 const notice = ref<{ kind: NoticeKind; text: string } | null>(null);
+const joinFeedback = ref<{ text: string } | null>(null);
 const isJoining = ref(false);
 const isWatching = ref(true);
 const voiceEnabled = ref(readStoredVoiceEnabled());
@@ -67,6 +67,7 @@ let hasReceivedInitialQueueSnapshot = false;
 let hasShownVoicePlaybackHint = false;
 let reminderAudioContext: AudioContext | null = null;
 let previousVoicesChangedHandler: SpeechSynthesis['onvoiceschanged'] = null;
+let joinFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
 const nextStudentNo = computed(() => waiting.value[0]?.studentNo ?? null);
@@ -75,55 +76,9 @@ const roomTitle = computed(() =>
   room.value ? formatRoomTitle(room.value) : currentRoom.roomCode ? formatRoomTitle(currentRoom) : ''
 );
 const voiceStatusText = computed(() => (voiceEnabled.value ? '语音播报已开启' : '语音播报已关闭'));
-const ownWaitingIndex = computed(() =>
-  ownStudentNo.value ? waiting.value.findIndex((item) => item.studentNo === ownStudentNo.value) : -1
-);
-const peopleAhead = computed(() => {
-  if (!ownStudentNo.value) {
-    return null;
-  }
-
-  if (currentStudentNo.value === ownStudentNo.value) {
-    return 0;
-  }
-
-  if (ownWaitingIndex.value < 0) {
-    return null;
-  }
-
-  return ownWaitingIndex.value + (currentStudentNo.value ? 1 : 0);
-});
-
-const ownStatusText = computed(() => {
-  if (!ownStudentNo.value) {
-    return '输入学号后加入队列';
-  }
-
-  if (currentStudentNo.value === ownStudentNo.value) {
-    return '已经叫到你了';
-  }
-
-  if (typeof peopleAhead.value === 'number') {
-    return `你前面还有 ${peopleAhead.value} 人`;
-  }
-
-  return '你暂不在等待队列中';
-});
-const ownPositionText = computed(() => {
-  if (!ownStudentNo.value) {
-    return '未加入';
-  }
-
-  if (currentStudentNo.value === ownStudentNo.value) {
-    return '正在背书';
-  }
-
-  if (ownWaitingIndex.value >= 0) {
-    return `第 ${ownWaitingIndex.value + 1} 位`;
-  }
-
-  return '不在等待队列';
-});
+const currentStudentDisplay = computed(() => (currentStudentNo.value ? `${currentStudentNo.value} 号` : '暂无'));
+const nextStudentDisplay = computed(() => (nextStudentNo.value ? `${nextStudentNo.value} 号` : '暂无'));
+const waitingCountText = computed(() => `${waiting.value.length} 人`);
 
 function showNotice(kind: NoticeKind, text: string) {
   notice.value = { kind, text };
@@ -146,6 +101,30 @@ function showNotice(kind: NoticeKind, text: string) {
   ElMessage.info(text);
 }
 
+function clearJoinFeedback() {
+  joinFeedback.value = null;
+
+  if (joinFeedbackTimer !== null) {
+    clearTimeout(joinFeedbackTimer);
+    joinFeedbackTimer = null;
+  }
+}
+
+function showJoinFeedback(studentNo: string, peopleAhead: number) {
+  const text = `${studentNo} 号已加入队列，当前前面还有 ${peopleAhead} 人`;
+  joinFeedback.value = { text };
+  ElMessage.success(text);
+
+  if (joinFeedbackTimer !== null) {
+    clearTimeout(joinFeedbackTimer);
+  }
+
+  joinFeedbackTimer = setTimeout(() => {
+    joinFeedback.value = null;
+    joinFeedbackTimer = null;
+  }, 5000);
+}
+
 function formatQueueTime(value: string): string {
   if (!value) {
     return '-';
@@ -161,10 +140,6 @@ function formatQueueTime(value: string): string {
     hour: '2-digit',
     minute: '2-digit'
   });
-}
-
-function getStudentQueueRowClass({ row }: { row: QueueItem }) {
-  return row.studentNo === ownStudentNo.value ? 'queue-table-row--self' : '';
 }
 
 function canUseLocalStorage(): boolean {
@@ -426,6 +401,7 @@ async function submitStudentNo() {
 
   isJoining.value = true;
   notice.value = null;
+  clearJoinFeedback();
 
   try {
     if (!activeSessionCode.value) {
@@ -433,15 +409,18 @@ async function submitStudentNo() {
       return;
     }
 
+    const waitingCountBeforeJoin = waiting.value.length;
+    const currentAheadCount = currentStudentNo.value ? 1 : 0;
     const item = await joinQueue(activeSessionCode.value, trimmedStudentInput);
-    ownStudentNo.value = item.studentNo;
+    const joinedWaitingIndex = waiting.value.findIndex((waitingItem) => waitingItem.studentNo === item.studentNo);
+    const peopleAhead = currentAheadCount + (joinedWaitingIndex >= 0 ? joinedWaitingIndex : waitingCountBeforeJoin);
+
     studentInput.value = '';
     lastDigitsOnlyStudentInput.value = '';
-    showNotice('success', `${item.studentNo} 号已加入等待队列`);
+    showJoinFeedback(item.studentNo, peopleAhead);
     await nextTick();
     studentNoInput.value?.focus();
   } catch (error) {
-    ownStudentNo.value = normalizedStudentNo;
     showNotice('warning', getErrorMessage(error));
   } finally {
     isJoining.value = false;
@@ -532,6 +511,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopWatching?.();
+  clearJoinFeedback();
   cleanupSpeechVoices();
   window.speechSynthesis?.cancel();
 });
@@ -553,39 +533,23 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-      <el-alert
-        v-if="currentStudentNo === ownStudentNo"
-        :closable="false"
-        show-icon
-        title="已经叫到你了，请准备背书"
-        type="success"
-      />
-      <el-alert
-        v-else-if="!ownStudentNo"
-        :closable="false"
-        show-icon
-        title="你还没有加入队列"
-        type="info"
-      />
-
       <el-row class="status-grid" :gutter="16">
-        <el-col :xs="24" :sm="8">
-          <div class="metric-panel" aria-live="polite">
+        <el-col :xs="24" :sm="12">
+          <div class="metric-panel metric-panel--large" aria-live="polite">
             <span>当前叫到</span>
-            <strong>{{ currentStudentNo ?? '等待叫号' }}</strong>
+            <strong>{{ currentStudentDisplay }}</strong>
           </div>
         </el-col>
-        <el-col :xs="24" :sm="8">
+        <el-col :xs="24" :sm="6">
           <div class="metric-panel" aria-live="polite">
-            <span>我的学号</span>
-            <strong>{{ ownStudentNo || '未填写' }}</strong>
+            <span>下一位</span>
+            <strong>{{ nextStudentDisplay }}</strong>
           </div>
         </el-col>
-        <el-col :xs="24" :sm="8">
+        <el-col :xs="24" :sm="6">
           <div class="metric-panel" aria-live="polite">
-            <span>我的位置</span>
-            <strong>{{ ownPositionText }}</strong>
-            <small v-if="typeof peopleAhead === 'number'">前面还有 {{ peopleAhead }} 人</small>
+            <span>等待人数</span>
+            <strong>{{ waitingCountText }}</strong>
           </div>
         </el-col>
       </el-row>
@@ -610,6 +574,15 @@ onBeforeUnmount(() => {
       </el-form>
 
       <el-alert
+        v-if="joinFeedback"
+        class="entry-notice"
+        :closable="false"
+        show-icon
+        :title="joinFeedback.text"
+        type="success"
+      />
+
+      <el-alert
         v-if="notice"
         class="entry-notice"
         :closable="false"
@@ -627,21 +600,14 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-      <el-table
-        v-if="waiting.length"
-        class="queue-table"
-        :data="waiting"
-        :row-class-name="getStudentQueueRowClass"
-      >
+      <el-table v-if="waiting.length" class="queue-table" :data="waiting">
         <el-table-column label="序号" width="80">
           <template #default="{ $index }">{{ $index + 1 }}</template>
         </el-table-column>
         <el-table-column label="学号" min-width="120" prop="studentNo" />
         <el-table-column label="状态" min-width="120">
-          <template #default="{ row }">
-            <el-tag :type="row.studentNo === ownStudentNo ? 'success' : 'info'" effect="light">
-              {{ row.studentNo === ownStudentNo ? '我 · 等待中' : '等待中' }}
-            </el-tag>
+          <template #default>
+            <el-tag type="info" effect="light">等待中</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="加入时间" min-width="120">
