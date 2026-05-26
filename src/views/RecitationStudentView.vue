@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { ElMessage, type InputInstance } from 'element-plus';
 import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import { STUDENT_NO_VALIDATION_MESSAGE, normalizeStudentNo } from '@/features/recitation/sessionLogic';
 import {
@@ -14,7 +15,7 @@ import {
 } from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
 
-type NoticeKind = 'success' | 'warning' | 'info';
+type NoticeKind = 'success' | 'warning' | 'info' | 'error';
 
 const VOICE_ENABLED_STORAGE_KEY = 'classroom-toolkit:recitation-voice-enabled';
 const LEGACY_CALL_ALERT_STORAGE_KEY = 'classroom-toolkit:recitation-call-alert-enabled';
@@ -49,7 +50,7 @@ const joinCode = computed(() => normalizeStudentJoinCode(String(route.params.joi
 const activeSessionCode = ref('');
 const studentInput = ref('');
 const lastDigitsOnlyStudentInput = ref('');
-const studentNoInput = ref<HTMLInputElement | null>(null);
+const studentNoInput = ref<InputInstance | null>(null);
 const ownStudentNo = ref('');
 const room = ref<Room | null>(null);
 const current = ref<QueueItem | null>(null);
@@ -108,9 +109,62 @@ const ownStatusText = computed(() => {
 
   return '你暂不在等待队列中';
 });
+const ownPositionText = computed(() => {
+  if (!ownStudentNo.value) {
+    return '未加入';
+  }
+
+  if (currentStudentNo.value === ownStudentNo.value) {
+    return '正在背书';
+  }
+
+  if (ownWaitingIndex.value >= 0) {
+    return `第 ${ownWaitingIndex.value + 1} 位`;
+  }
+
+  return '不在等待队列';
+});
 
 function showNotice(kind: NoticeKind, text: string) {
   notice.value = { kind, text };
+
+  if (kind === 'success') {
+    ElMessage.success(text);
+    return;
+  }
+
+  if (kind === 'error') {
+    ElMessage.error(text);
+    return;
+  }
+
+  if (kind === 'warning') {
+    ElMessage.warning(text);
+    return;
+  }
+
+  ElMessage.info(text);
+}
+
+function formatQueueTime(value: string): string {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function getStudentQueueRowClass({ row }: { row: QueueItem }) {
+  return row.studentNo === ownStudentNo.value ? 'queue-table-row--self' : '';
 }
 
 function canUseLocalStorage(): boolean {
@@ -347,19 +401,12 @@ function handleStudentNoPaste(event: Event) {
   }
 }
 
-function handleStudentNoInput(event: Event) {
-  const inputElement = event.target as HTMLInputElement | null;
-
-  if (!inputElement) {
+function handleStudentNoInput(value: string) {
+  if (value === '' || STUDENT_NO_DIGITS_PATTERN.test(value)) {
+    lastDigitsOnlyStudentInput.value = value;
     return;
   }
 
-  if (inputElement.value === '' || STUDENT_NO_DIGITS_PATTERN.test(inputElement.value)) {
-    lastDigitsOnlyStudentInput.value = inputElement.value;
-    return;
-  }
-
-  inputElement.value = lastDigitsOnlyStudentInput.value;
   studentInput.value = lastDigitsOnlyStudentInput.value;
   showNotice('warning', STUDENT_NO_VALIDATION_MESSAGE);
 }
@@ -474,12 +521,12 @@ onMounted(async () => {
       },
       (error) => {
         isWatching.value = false;
-        showNotice('warning', getErrorMessage(error));
+        showNotice('error', getErrorMessage(error));
       }
     );
   } catch (error) {
     isWatching.value = false;
-    showNotice('warning', getErrorMessage(error));
+    showNotice('error', getErrorMessage(error));
   }
 });
 
@@ -491,90 +538,133 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="page run-page">
-    <header class="page-header run-header">
-      <div>
-        <p class="eyebrow">学生端</p>
-      </div>
-      <div class="header-actions">
-        <RouterLink class="button button--secondary" :to="{ name: 'student-entry' }">更换房间</RouterLink>
-      </div>
-    </header>
+  <main class="page run-page queue-page">
+    <el-card class="section-card" shadow="never">
+      <template #header>
+        <div class="card-header card-header--split">
+          <div>
+            <el-tag effect="light">学生端</el-tag>
+            <h1>{{ roomTitle || '学生排号' }}</h1>
+            <p>学生排号</p>
+          </div>
+          <RouterLink custom :to="{ name: 'student-entry' }" v-slot="{ navigate }">
+            <el-button @click="navigate">更换房间</el-button>
+          </RouterLink>
+        </div>
+      </template>
 
-    <section class="current-panel" :class="{ 'current-panel--empty': !currentStudentNo }" aria-live="polite">
-      <p>当前叫到</p>
-      <strong>{{ currentStudentNo ?? '等待叫号' }}</strong>
-      <span v-if="currentStudentNo">学号</span>
-    </section>
+      <el-alert
+        v-if="currentStudentNo === ownStudentNo"
+        :closable="false"
+        show-icon
+        title="已经叫到你了，请准备背书"
+        type="success"
+      />
+      <el-alert
+        v-else-if="!ownStudentNo"
+        :closable="false"
+        show-icon
+        title="你还没有加入队列"
+        type="info"
+      />
 
-    <section class="student-join-panel">
-      <form class="student-join-panel__form" @submit.prevent="submitStudentNo">
-        <label for="student-no">请输入你的学号排队</label>
-        <input
-          id="student-no"
-          ref="studentNoInput"
-          v-model="studentInput"
-          autocomplete="off"
-          inputmode="numeric"
-          pattern="[0-9]*"
-          placeholder="例如：7"
-          type="text"
-          @beforeinput="handleStudentNoBeforeInput"
-          @input="handleStudentNoInput"
-          @paste="handleStudentNoPaste"
-        />
-        <button class="button button--primary" :disabled="isJoining" type="submit">
-          {{ isJoining ? '加入中...' : '加入队列' }}
-        </button>
-      </form>
+      <el-row class="status-grid" :gutter="16">
+        <el-col :xs="24" :sm="8">
+          <div class="metric-panel" aria-live="polite">
+            <span>当前叫到</span>
+            <strong>{{ currentStudentNo ?? '等待叫号' }}</strong>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="8">
+          <div class="metric-panel" aria-live="polite">
+            <span>我的学号</span>
+            <strong>{{ ownStudentNo || '未填写' }}</strong>
+          </div>
+        </el-col>
+        <el-col :xs="24" :sm="8">
+          <div class="metric-panel" aria-live="polite">
+            <span>我的位置</span>
+            <strong>{{ ownPositionText }}</strong>
+            <small v-if="typeof peopleAhead === 'number'">前面还有 {{ peopleAhead }} 人</small>
+          </div>
+        </el-col>
+      </el-row>
 
-      <div class="student-status" aria-live="polite">
-        <span>排队状态</span>
-        <strong>{{ ownStatusText }}</strong>
-      </div>
+      <el-form class="join-form" label-position="top" @submit.prevent="submitStudentNo">
+        <el-form-item label="请输入你的学号排队">
+          <el-input
+            id="student-no"
+            ref="studentNoInput"
+            v-model="studentInput"
+            autocomplete="off"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            placeholder="例如：7"
+            size="large"
+            @beforeinput="handleStudentNoBeforeInput"
+            @input="handleStudentNoInput"
+            @paste="handleStudentNoPaste"
+          />
+        </el-form-item>
+        <el-button :loading="isJoining" native-type="submit" size="large" type="primary">加入队列</el-button>
+      </el-form>
 
-      <div v-if="notice" class="notice" :class="`notice--${notice.kind}`" role="status">
-        {{ notice.text }}
-      </div>
-    </section>
+      <el-alert
+        v-if="notice"
+        class="entry-notice"
+        :closable="false"
+        show-icon
+        :title="notice.text"
+        :type="notice.kind"
+      />
+    </el-card>
 
-    <section class="dashboard-grid dashboard-grid--student">
-      <article class="list-panel list-panel--queue">
-        <header>
+    <el-card class="section-card" shadow="never">
+      <template #header>
+        <div class="card-header card-header--split">
           <h2>当前队列</h2>
-          <span>{{ waiting.length }} 人等待</span>
-        </header>
+          <el-tag type="info" effect="plain">{{ waiting.length }} 人等待</el-tag>
+        </div>
+      </template>
 
-        <ol v-if="waiting.length" class="queue-list">
-          <li
-            v-for="(student, index) in waiting"
-            :key="student._id"
-            :class="{ 'queue-list__item--self': student.studentNo === ownStudentNo }"
-          >
-            <span class="queue-index">{{ index + 1 }}</span>
-            <strong>{{ student.studentNo }}</strong>
-            <span class="queue-note">{{ student.studentNo === ownStudentNo ? '我' : '等待中' }}</span>
-          </li>
-        </ol>
+      <el-table
+        v-if="waiting.length"
+        class="queue-table"
+        :data="waiting"
+        :row-class-name="getStudentQueueRowClass"
+      >
+        <el-table-column label="序号" width="80">
+          <template #default="{ $index }">{{ $index + 1 }}</template>
+        </el-table-column>
+        <el-table-column label="学号" min-width="120" prop="studentNo" />
+        <el-table-column label="状态" min-width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.studentNo === ownStudentNo ? 'success' : 'info'" effect="light">
+              {{ row.studentNo === ownStudentNo ? '我 · 等待中' : '等待中' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="加入时间" min-width="120">
+          <template #default="{ row }">{{ formatQueueTime(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
 
-        <p v-else class="empty-text">{{ isWatching ? '正在连接实时队列...' : '暂无等待学生' }}</p>
-      </article>
-    </section>
+      <el-empty v-else :description="isWatching ? '正在连接实时队列...' : '暂无等待学生'" />
+    </el-card>
 
-    <section class="voice-settings-panel">
-      <div class="voice-settings-status">
-        <span>语音播报</span>
-        <strong>{{ voiceStatusText }}</strong>
+    <el-card class="section-card" shadow="never">
+      <div class="voice-settings-row">
+        <div>
+          <h2>语音播报</h2>
+          <p>{{ voiceStatusText }}</p>
+        </div>
+        <el-switch
+          v-model="voiceEnabled"
+          active-text="开启"
+          inactive-text="关闭"
+          @change="handleVoiceEnabledChange"
+        />
       </div>
-      <div class="voice-settings-actions">
-        <label class="voice-switch">
-          <input v-model="voiceEnabled" type="checkbox" @change="handleVoiceEnabledChange" />
-          <span class="voice-switch__track" aria-hidden="true">
-            <span class="voice-switch__thumb"></span>
-          </span>
-          <span class="voice-switch__label">{{ voiceEnabled ? '开启' : '关闭' }}</span>
-        </label>
-      </div>
-    </section>
+    </el-card>
   </main>
 </template>

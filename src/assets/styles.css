@@ -106,6 +106,58 @@ h2 {
   align-items: start;
 }
 
+.entry-card {
+  width: 100%;
+  border: 2px solid #dfe6dd;
+  border-radius: 8px;
+  box-shadow: 0 16px 34px rgba(22, 33, 27, 0.08);
+}
+
+.entry-card .el-card__header,
+.entry-card .el-card__body {
+  padding: 24px;
+}
+
+.entry-card .el-form {
+  display: grid;
+  gap: 14px;
+}
+
+.entry-card .el-form-item {
+  margin-bottom: 0;
+}
+
+.entry-card .el-form-item__label {
+  color: #415248;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.entry-card .el-button {
+  min-height: 44px;
+  font-weight: 800;
+}
+
+.card-header {
+  display: grid;
+  gap: 10px;
+}
+
+.card-header h1,
+.card-header h2 {
+  margin: 0;
+  color: #16211b;
+  line-height: 1.16;
+}
+
+.card-header h1 {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+}
+
+.card-header h2 {
+  font-size: 1.6rem;
+}
+
 .tool-card {
   display: grid;
   gap: 14px;
@@ -246,18 +298,8 @@ h2 {
   box-shadow: 0 0 0 4px rgba(47, 138, 97, 0.16);
 }
 
-.student-entry-panel {
+.student-entry-card {
   width: min(720px, 100%);
-}
-
-.student-entry-panel h1 {
-  margin-bottom: 8px;
-  font-size: clamp(2.2rem, 4.5vw, 4rem);
-}
-
-.student-entry-form {
-  display: grid;
-  gap: 18px;
 }
 
 #join-code::placeholder {
@@ -273,23 +315,23 @@ h2 {
 }
 
 .room-result {
+  margin-top: 4px;
+}
+
+.room-result__content {
   display: grid;
-  gap: 8px;
-  padding-top: 18px;
-  border-top: 2px solid #dfe6dd;
+  gap: 6px;
   color: #26372d;
-  font-size: 1.08rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.room-result strong {
-  color: #1d5b3b;
-  font-size: 1.3rem;
-}
-
-.room-result p {
+.room-result__content p {
   margin: 4px 0 0;
   color: #5a655e;
+}
+
+.entry-notice {
+  margin-top: 18px;
 }
 
 .role-toggle {
@@ -318,6 +360,125 @@ h2 {
 
 .run-page {
   width: min(1440px, calc(100% - 40px));
+}
+
+.queue-page {
+  width: min(960px, calc(100% - 40px));
+}
+
+.section-card {
+  margin-bottom: 16px;
+  border: 2px solid #dfe6dd;
+  border-radius: 8px;
+  box-shadow: 0 16px 34px rgba(22, 33, 27, 0.08);
+}
+
+.section-card .el-card__header,
+.section-card .el-card__body {
+  padding: 24px;
+}
+
+.card-header--split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card-header p {
+  margin: 6px 0 0;
+  color: #666f69;
+}
+
+.status-grid {
+  margin-top: 16px;
+}
+
+.metric-panel {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid #dfe6dd;
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.metric-panel span {
+  color: #58665f;
+  font-weight: 800;
+}
+
+.metric-panel strong {
+  overflow-wrap: anywhere;
+  color: #103b28;
+  font-size: clamp(1.8rem, 4vw, 3.2rem);
+  line-height: 1.05;
+}
+
+.metric-panel small {
+  color: #5b6861;
+  font-weight: 700;
+}
+
+.metric-panel--large {
+  min-height: 170px;
+}
+
+.metric-panel--large strong {
+  font-size: clamp(2.8rem, 8vw, 5.4rem);
+}
+
+.join-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.join-form .el-form-item {
+  margin-bottom: 0;
+}
+
+.join-form .el-form-item__label {
+  color: #415248;
+  font-weight: 800;
+}
+
+.action-row {
+  margin-top: 18px;
+}
+
+.teacher-actions {
+  align-content: start;
+}
+
+.teacher-actions .el-button {
+  min-width: 112px;
+}
+
+.queue-table {
+  width: 100%;
+}
+
+.queue-table .queue-table-row--self {
+  --el-table-tr-bg-color: #ecf8ef;
+}
+
+.voice-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.voice-settings-row h2 {
+  margin: 0 0 6px;
+  font-size: 1.4rem;
+}
+
+.voice-settings-row p {
+  margin: 0;
+  color: #5b6861;
 }
 
 .run-header {
@@ -368,161 +529,10 @@ h2 {
   margin-bottom: 22px;
 }
 
-.teacher-operator-panel {
-  grid-template-columns: minmax(380px, 0.85fr) minmax(420px, 1.15fr);
-}
-
-.student-join-panel {
-  display: grid;
-  grid-template-columns: minmax(280px, 520px) 1fr;
-  gap: 16px;
-  align-items: stretch;
-  margin-bottom: 22px;
-}
-
 .teacher-auth-panel {
   display: grid;
   gap: 16px;
   max-width: 620px;
-}
-
-.student-join-panel__form,
-.student-status {
-  display: grid;
-  gap: 12px;
-  padding: 20px;
-  border: 2px solid #dfe6dd;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.student-join-panel label,
-.student-status span {
-  color: #415248;
-  font-size: 1.1rem;
-  font-weight: 900;
-}
-
-.student-join-panel input {
-  width: 100%;
-  min-height: 58px;
-  padding: 12px 16px;
-  border: 2px solid #bccbbf;
-  border-radius: 8px;
-  color: #16211b;
-  font-size: clamp(1.3rem, 2.4vw, 2rem);
-  outline: none;
-}
-
-.student-join-panel input:focus {
-  border-color: #2f8a61;
-  box-shadow: 0 0 0 4px rgba(47, 138, 97, 0.16);
-}
-
-.student-status {
-  align-content: center;
-}
-
-.student-status strong {
-  color: #103b28;
-  font-size: clamp(1.7rem, 3vw, 3rem);
-  line-height: 1.12;
-}
-
-.voice-settings-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 16px;
-  padding: 20px;
-  border: 2px solid #dfe6dd;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.voice-settings-status {
-  display: grid;
-  gap: 8px;
-}
-
-.voice-settings-panel span {
-  color: #415248;
-  font-size: 1.1rem;
-  font-weight: 900;
-}
-
-.voice-settings-panel strong {
-  color: #103b28;
-  font-size: clamp(1.4rem, 2vw, 2rem);
-}
-
-.voice-settings-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.voice-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 52px;
-  padding: 8px 12px;
-  border: 2px solid #c8d5ca;
-  border-radius: 8px;
-  background: #f8faf8;
-  cursor: pointer;
-  user-select: none;
-}
-
-.voice-switch input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.voice-switch__track {
-  position: relative;
-  width: 58px;
-  height: 32px;
-  border-radius: 999px;
-  background: #a9b7ad;
-  transition: background 160ms ease;
-}
-
-.voice-switch__thumb {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(22, 33, 27, 0.22);
-  transition: transform 160ms ease;
-}
-
-.voice-switch input:checked + .voice-switch__track {
-  background: #226f4c;
-}
-
-.voice-switch input:checked + .voice-switch__track .voice-switch__thumb {
-  transform: translateX(26px);
-}
-
-.voice-switch input:focus-visible + .voice-switch__track {
-  box-shadow: 0 0 0 4px rgba(47, 138, 97, 0.18);
-}
-
-.voice-switch__label {
-  min-width: 42px;
-  color: #203228;
-  font-weight: 900;
 }
 
 .input-display,
@@ -552,13 +562,6 @@ h2 {
   line-height: 1;
 }
 
-.input-display__copy {
-  width: fit-content;
-  min-height: 44px;
-  padding: 8px 14px;
-  font-size: 1rem;
-}
-
 .input-display__actions {
   display: flex;
   flex-wrap: wrap;
@@ -567,60 +570,6 @@ h2 {
 
 .primary-actions {
   align-content: start;
-}
-
-.teacher-room-card {
-  grid-template-columns: 1fr;
-  align-content: start;
-  gap: 16px;
-}
-
-.teacher-room-card__code,
-.teacher-room-card__meta {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-}
-
-.teacher-room-card__meta {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-}
-
-.teacher-room-card__code strong {
-  white-space: nowrap;
-}
-
-.teacher-room-card .input-display__actions {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 10px;
-}
-
-.teacher-room-card .input-display__actions--copy {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-}
-
-.teacher-room-card .input-display__copy {
-  width: 100%;
-}
-
-.teacher-operator-panel .primary-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(76px, 1fr);
-  align-content: stretch;
-  gap: 12px;
-  padding: 20px;
-  border: 2px solid #dfe6dd;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.teacher-operator-panel .primary-actions button {
-  width: 100%;
-  height: 100%;
-  min-height: 68px;
 }
 
 .number-pad {
@@ -673,14 +622,6 @@ h2 {
   gap: 16px;
 }
 
-.dashboard-grid--student {
-  grid-template-columns: minmax(280px, 1fr);
-}
-
-.dashboard-grid--teacher {
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-}
-
 .list-panel {
   min-height: 220px;
   padding: 20px;
@@ -727,20 +668,6 @@ h2 {
   background: #f4f7f4;
 }
 
-.completed-list li {
-  grid-template-columns: 52px 1fr;
-}
-
-.queue-list__item--self {
-  outline: 3px solid #2f8a61;
-  background: #ecf8ef;
-}
-
-.queue-note {
-  color: #506159;
-  font-weight: 900;
-}
-
 .queue-index {
   display: grid;
   place-items: center;
@@ -772,13 +699,6 @@ h2 {
 .queue-list button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
-}
-
-.queue-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .student-chip-list {
@@ -836,9 +756,7 @@ h2 {
   .page-header,
   .operator-panel,
   .dashboard-grid,
-  .room-entry-grid,
-  .student-join-panel,
-  .teacher-operator-panel {
+  .room-entry-grid {
     grid-template-columns: 1fr;
   }
 
@@ -877,35 +795,12 @@ h2 {
     min-height: 240px;
   }
 
-  .teacher-room-card,
-  .teacher-operator-panel .primary-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .voice-settings-panel {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .voice-settings-actions {
-    justify-content: stretch;
-  }
-
   .queue-list li {
     grid-template-columns: 42px 1fr;
   }
 
   .queue-list button {
     grid-column: 1 / -1;
-  }
-
-  .queue-actions {
-    grid-column: 1 / -1;
-    justify-content: stretch;
-  }
-
-  .queue-actions button {
-    flex: 1 1 120px;
   }
 
   .shortcut-bar {

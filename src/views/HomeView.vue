@@ -198,94 +198,129 @@ async function enterStudentRoom() {
     </section>
 
     <section class="room-entry-grid" aria-label="背书排号房间入口">
-      <form class="create-panel" @submit.prevent="createRecitationRoom">
-        <span class="tool-card__tag">创建固定房间</span>
-        <h2>新房间</h2>
-        <label for="room-class-name">班级名称</label>
-        <input
-          id="room-class-name"
-          v-model="classNameInput"
-          autocomplete="off"
-          placeholder="例如：博雅中学初二8班"
-          type="text"
-        />
-        <label for="room-subject">科目</label>
-        <input
-          id="room-subject"
-          v-model="subjectInput"
-          autocomplete="off"
-          placeholder="例如：语文"
-          type="text"
-        />
-        <button class="button button--primary" :disabled="isCreating" type="submit">
-          {{ isCreating ? '创建中...' : '创建固定房间' }}
-        </button>
-
-        <div v-if="createdRoom" class="room-result" aria-live="polite">
-          <strong>固定房间创建成功</strong>
-          <span>班级：{{ createdRoom.className }}</span>
-          <span>科目：{{ createdRoom.subject }}</span>
-          <span>房间码：{{ createdRoom.roomCode }}</span>
-          <span>PIN：{{ createdRoom.pin }}</span>
-          <p>请妥善保存房间码和 PIN。</p>
-          <div class="create-actions">
-            <button class="button button--secondary" type="button" @click="enterCreatedRoom">进入教师端</button>
-            <button class="button button--ghost" type="button" @click="copyCreatedRoomInfo">复制教师管理信息</button>
+      <el-card class="entry-card" shadow="never">
+        <template #header>
+          <div class="card-header">
+            <el-tag type="success" effect="light">创建固定房间</el-tag>
+            <h2>新房间</h2>
           </div>
-        </div>
-      </form>
+        </template>
 
-      <form class="create-panel" @submit.prevent="enterTeacherRoom">
-        <span class="tool-card__tag">管理已有房间</span>
-        <h2>老师端</h2>
-        <label for="teacher-room-code">房间码</label>
-        <input
-          id="teacher-room-code"
-          v-model="teacherRoomCode"
-          autocomplete="off"
-          maxlength="8"
-          placeholder="请输入房间码"
-          type="text"
-          @input="teacherRoomCode = normalizeSessionCode(teacherRoomCode)"
-        />
+        <el-form label-position="top" @submit.prevent="createRecitationRoom">
+          <el-form-item label="班级名称">
+            <el-input
+              id="room-class-name"
+              v-model="classNameInput"
+              autocomplete="off"
+              placeholder="例如：博雅中学初二8班"
+              size="large"
+            />
+          </el-form-item>
+          <el-form-item label="科目">
+            <el-input
+              id="room-subject"
+              v-model="subjectInput"
+              autocomplete="off"
+              placeholder="例如：语文"
+              size="large"
+            />
+          </el-form-item>
+          <el-button :loading="isCreating" native-type="submit" size="large" type="primary">
+            创建固定房间
+          </el-button>
 
-        <label for="teacher-pin">PIN 码</label>
-        <input
-          id="teacher-pin"
-          v-model="teacherPin"
-          autocomplete="off"
-          inputmode="numeric"
-          maxlength="6"
-          placeholder="请输入 PIN"
-          type="password"
-        />
+          <el-alert
+            v-if="createdRoom"
+            class="room-result"
+            :closable="false"
+            show-icon
+            title="固定房间创建成功"
+            type="success"
+          >
+            <div class="room-result__content" aria-live="polite">
+              <span>班级：{{ createdRoom.className }}</span>
+              <span>科目：{{ createdRoom.subject }}</span>
+              <span>房间码：{{ createdRoom.roomCode }}</span>
+              <span>PIN：{{ createdRoom.pin }}</span>
+              <p>请妥善保存房间码和 PIN。</p>
+            </div>
+          </el-alert>
 
-        <button class="button button--secondary" :disabled="isEnteringTeacherRoom" type="submit">
-          {{ isEnteringTeacherRoom ? '进入中...' : '进入教师端' }}
-        </button>
-      </form>
+          <div v-if="createdRoom" class="create-actions">
+            <el-button size="large" type="primary" @click="enterCreatedRoom">进入教师端</el-button>
+            <el-button size="large" @click="copyCreatedRoomInfo">复制教师管理信息</el-button>
+          </div>
+        </el-form>
+      </el-card>
 
-      <form class="create-panel" @submit.prevent="enterStudentRoom">
-        <span class="tool-card__tag">学生端</span>
-        <h2>加入排队</h2>
-        <label for="student-join-code">排队码</label>
-        <input
-          id="student-join-code"
-          v-model="studentJoinCode"
-          autocomplete="off"
-          maxlength="8"
-          placeholder="请输入排队码"
-          type="text"
-          @input="studentJoinCode = normalizeStudentJoinCode(studentJoinCode)"
-        />
-        <button class="button button--secondary" :disabled="isEnteringStudentRoom" type="submit">
-          {{ isEnteringStudentRoom ? '进入中...' : '进入学生端' }}
-        </button>
-      </form>
+      <el-card class="entry-card" shadow="never">
+        <template #header>
+          <div class="card-header">
+            <el-tag type="warning" effect="light">管理已有房间</el-tag>
+            <h2>老师端</h2>
+          </div>
+        </template>
+
+        <el-form label-position="top" @submit.prevent="enterTeacherRoom">
+          <el-form-item label="房间码">
+            <el-input
+              id="teacher-room-code"
+              v-model="teacherRoomCode"
+              autocomplete="off"
+              maxlength="8"
+              placeholder="请输入房间码"
+              size="large"
+              @input="teacherRoomCode = normalizeSessionCode(teacherRoomCode)"
+            />
+          </el-form-item>
+
+          <el-form-item label="PIN 码">
+            <el-input
+              id="teacher-pin"
+              v-model="teacherPin"
+              autocomplete="off"
+              inputmode="numeric"
+              maxlength="6"
+              placeholder="请输入 PIN"
+              show-password
+              size="large"
+              type="password"
+            />
+          </el-form-item>
+
+          <el-button :loading="isEnteringTeacherRoom" native-type="submit" size="large" type="primary">
+            进入教师端
+          </el-button>
+        </el-form>
+      </el-card>
+
+      <el-card class="entry-card" shadow="never">
+        <template #header>
+          <div class="card-header">
+            <el-tag effect="light">学生端</el-tag>
+            <h2>加入排队</h2>
+          </div>
+        </template>
+
+        <el-form label-position="top" @submit.prevent="enterStudentRoom">
+          <el-form-item label="排队码">
+            <el-input
+              id="student-join-code"
+              v-model="studentJoinCode"
+              autocomplete="off"
+              maxlength="8"
+              placeholder="请输入排队码"
+              size="large"
+              @input="studentJoinCode = normalizeStudentJoinCode(studentJoinCode)"
+            />
+          </el-form-item>
+          <el-button :loading="isEnteringStudentRoom" native-type="submit" size="large" type="primary">
+            进入学生端
+          </el-button>
+        </el-form>
+      </el-card>
     </section>
 
-    <div v-if="notice" class="notice" :class="`notice--${notice.kind}`" role="status">
-      {{ notice.text }}
-    </div>
+    <el-alert v-if="notice" :closable="false" show-icon :title="notice.text" :type="notice.kind" />
   </main>
 </template>

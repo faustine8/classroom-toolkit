@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import {
   getRememberedTeacherPin,
@@ -22,11 +23,12 @@ import {
   verifyTeacherPin,
   watchQueue,
   type QueueItem,
+  type QueueStatus,
   type Room
 } from '@/services/cloudbaseService';
 import { getErrorMessage } from '@/utils/errorMessage';
 
-type NoticeKind = 'success' | 'warning' | 'info';
+type NoticeKind = 'success' | 'warning' | 'info' | 'error';
 
 const route = useRoute();
 const sessionCode = computed(() => normalizeSessionCode(String(route.params.sessionCode ?? '')));
@@ -48,6 +50,72 @@ const joinStatusText = computed(() => (room.value?.joinEnabled ? '排队已开�
 
 function showNotice(kind: NoticeKind, text: string) {
   notice.value = { kind, text };
+
+  if (kind === 'success') {
+    ElMessage.success(text);
+    return;
+  }
+
+  if (kind === 'error') {
+    ElMessage.error(text);
+    return;
+  }
+
+  if (kind === 'warning') {
+    ElMessage.warning(text);
+    return;
+  }
+
+  ElMessage.info(text);
+}
+
+function formatQueueTime(value: string): string {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function getQueueStatusText(status: QueueStatus): string {
+  if (status === 'current') {
+    return '当前';
+  }
+
+  if (status === 'done') {
+    return '已完成';
+  }
+
+  if (status === 'removed') {
+    return '已移除';
+  }
+
+  return '等待中';
+}
+
+function getQueueStatusTagType(status: QueueStatus) {
+  if (status === 'current') {
+    return 'warning';
+  }
+
+  if (status === 'done') {
+    return 'success';
+  }
+
+  if (status === 'removed') {
+    return 'danger';
+  }
+
+  return 'info';
 }
 
 async function runAction(action: () => Promise<void>) {
@@ -66,7 +134,7 @@ async function runAction(action: () => Promise<void>) {
   try {
     await action();
   } catch (error) {
-    showNotice('warning', getErrorMessage(error));
+    showNotice('error', getErrorMessage(error));
   } finally {
     isBusy.value = false;
   }
@@ -92,12 +160,12 @@ async function startWatching() {
       },
       (error) => {
         isWatching.value = false;
-        showNotice('warning', getErrorMessage(error));
+        showNotice('error', getErrorMessage(error));
       }
     );
   } catch (error) {
     isWatching.value = false;
-    showNotice('warning', getErrorMessage(error));
+    showNotice('error', getErrorMessage(error));
   }
 }
 
@@ -154,7 +222,7 @@ PIN 码：${pinCode}`;
     await navigator.clipboard.writeText(text);
     showNotice('success', '已复制房间信息');
   } catch {
-    showNotice('warning', '复制失败，请手动复制');
+    showNotice('error', '复制失败，请手动复制');
   }
 }
 
@@ -182,7 +250,7 @@ ${buildStudentEntryUrl(studentJoinCode.value)}
     await navigator.clipboard.writeText(text);
     showNotice('success', '已复制学生入口');
   } catch {
-    showNotice('warning', '复制失败，请手动复制学生入口');
+    showNotice('error', '复制失败，请手动复制学生入口');
   }
 }
 
@@ -205,12 +273,6 @@ async function handleDisableStudentJoin() {
 }
 
 async function handleRefreshStudentJoinCode() {
-  const confirmed = window.confirm('刷新后旧的学生入口将失效，是否继续？');
-
-  if (!confirmed) {
-    return;
-  }
-
   await runAction(async () => {
     const updatedRoom = await refreshStudentJoinCode(sessionCode.value);
     room.value = updatedRoom;
@@ -253,27 +315,21 @@ async function handleRepeatCall() {
 async function handleRemove(item: QueueItem) {
   await runAction(async () => {
     const removed = await removeQueueItem(sessionCode.value, item._id);
-    showNotice('info', `${removed.studentNo} 号已移除`);
+    showNotice('success', `${removed.studentNo} 号已移除`);
   });
 }
 
 async function handlePrioritize(item: QueueItem) {
   await runAction(async () => {
     const prioritized = await prioritizeQueueItem(sessionCode.value, item._id);
-    showNotice('info', `已将 ${prioritized.studentNo} 号排到最前`);
+    showNotice('success', `已将 ${prioritized.studentNo} 号排到最前`);
   });
 }
 
 async function handleClearQueue() {
-  const confirmed = window.confirm('确定要清空等待队列并移除当前叫到的学生吗？');
-
-  if (!confirmed) {
-    return;
-  }
-
   await runAction(async () => {
     await clearQueue(sessionCode.value);
-    showNotice('info', '等待队列已清空');
+    showNotice('success', '等待队列已清空');
   });
 }
 
@@ -292,137 +348,213 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="page run-page">
-    <header class="page-header run-header">
-      <div>
-        <p class="eyebrow">老师端 · {{ sessionCode }}</p>
-      </div>
-      <div class="header-actions">
-        <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
-        <RouterLink class="button button--ghost" :to="{ name: 'student-entry' }">
-          学生端
-        </RouterLink>
-      </div>
-    </header>
-
-    <section v-if="!isTeacherAuthorized" class="teacher-auth-panel">
-      <form class="student-join-panel__form" @submit.prevent="authorizeTeacher">
-        <label for="teacher-pin">老师 PIN</label>
-        <input
-          id="teacher-pin"
-          v-model="teacherPinInput"
-          autocomplete="off"
-          autofocus
-          inputmode="numeric"
-          maxlength="6"
-          placeholder="输入创建房间时生成的 PIN"
-          type="password"
-        />
-        <button class="button button--primary" :disabled="isBusy" type="submit">
-          {{ isBusy ? '验证中...' : '进入管理' }}
-        </button>
-      </form>
-
-      <div v-if="notice" class="notice" :class="`notice--${notice.kind}`" role="status">
-        {{ notice.text }}
-      </div>
-    </section>
-
-    <template v-else>
-    <section class="current-panel" :class="{ 'current-panel--empty': !currentStudentNo }" aria-live="polite">
-      <p>当前正在背书</p>
-      <strong>{{ currentStudentNo ?? '等待叫号' }}</strong>
-      <span v-if="currentStudentNo">学号</span>
-    </section>
-
-    <section class="operator-panel teacher-operator-panel">
-      <div class="input-display teacher-room-card">
-        <div class="teacher-room-card__code">
-          <span>房间码</span>
-          <strong>{{ sessionCode }}</strong>
+  <main class="page run-page queue-page">
+    <el-card class="section-card" shadow="never">
+      <template #header>
+        <div class="card-header card-header--split">
+          <div>
+            <el-tag type="warning" effect="light">老师端 · {{ sessionCode }}</el-tag>
+            <h1>{{ isTeacherAuthorized ? roomTitle : '教师管理' }}</h1>
+            <p>{{ isTeacherAuthorized ? '队列管理' : '请输入老师 PIN 后进入管理' }}</p>
+          </div>
+          <el-space wrap>
+            <RouterLink custom to="/" v-slot="{ navigate }">
+              <el-button @click="navigate">返回首页</el-button>
+            </RouterLink>
+            <RouterLink custom :to="{ name: 'student-entry' }" v-slot="{ navigate }">
+              <el-button @click="navigate">学生端</el-button>
+            </RouterLink>
+          </el-space>
         </div>
-        <div class="teacher-room-card__meta">
-          <span v-if="teacherPinInput">老师 PIN：{{ teacherPinInput }}</span>
-          <span>学生入口：{{ joinStatusText }}</span>
-          <span v-if="studentJoinCode">排队码：{{ studentJoinCode }}</span>
-        </div>
-        <div class="input-display__actions">
-          <button class="button button--success input-display__copy" type="button" :disabled="isBusy" @click="handleEnableStudentJoin">
-            开启本节课排队
-          </button>
-          <button class="button button--warning input-display__copy" type="button" :disabled="isBusy" @click="handleDisableStudentJoin">
-            关闭排队
-          </button>
-          <button class="button button--secondary input-display__copy" type="button" :disabled="isBusy" @click="handleRefreshStudentJoinCode">
-            刷新学生入口
-          </button>
-        </div>
-        <div class="input-display__actions input-display__actions--copy">
-          <button class="button button--secondary input-display__copy" type="button" @click="handleCopyStudentEntry">
-            复制学生入口
-          </button>
-          <button class="button button--ghost input-display__copy" type="button" @click="handleCopyRoomInfo">
-            复制教师信息
-          </button>
-        </div>
-      </div>
+      </template>
 
-      <div class="primary-actions">
-        <button class="button button--primary" :disabled="isBusy" type="button" @click="handleCallNext">下一位</button>
-        <button class="button button--secondary" :disabled="isBusy || !currentStudentNo" type="button" @click="handleRepeatCall">
-          重复呼叫
-        </button>
-        <button class="button button--success" :disabled="isBusy || !current" type="button" @click="handleMarkDone">
-          通过/完成
-        </button>
-        <button v-if="current" class="button button--warning" :disabled="isBusy" type="button" @click="handleRemove(current)">
-          移除当前
-        </button>
-        <button class="button button--danger" :disabled="isBusy" type="button" @click="handleClearQueue">清空队列</button>
-      </div>
+      <el-form v-if="!isTeacherAuthorized" class="join-form" label-position="top" @submit.prevent="authorizeTeacher">
+        <el-form-item label="老师 PIN">
+          <el-input
+            id="teacher-pin"
+            v-model="teacherPinInput"
+            autocomplete="off"
+            autofocus
+            inputmode="numeric"
+            maxlength="6"
+            placeholder="输入创建房间时生成的 PIN"
+            show-password
+            size="large"
+            type="password"
+          />
+        </el-form-item>
+        <el-button :loading="isBusy" native-type="submit" size="large" type="primary">进入管理</el-button>
+      </el-form>
 
-      <div v-if="notice" class="notice" :class="`notice--${notice.kind}`" role="status">
-        {{ notice.text }}
-      </div>
-    </section>
+      <template v-else>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="房间标题">{{ roomTitle }}</el-descriptions-item>
+          <el-descriptions-item label="房间号">{{ sessionCode }}</el-descriptions-item>
+          <el-descriptions-item label="PIN 码">{{ teacherPinInput }}</el-descriptions-item>
+          <el-descriptions-item label="学生入口">
+            <el-tag :type="room?.joinEnabled ? 'success' : 'info'" effect="light">{{ joinStatusText }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="studentJoinCode" label="排队码">{{ studentJoinCode }}</el-descriptions-item>
+        </el-descriptions>
 
-    <section class="dashboard-grid dashboard-grid--teacher">
-      <article class="list-panel list-panel--queue">
-        <header>
-          <h2>等待队列</h2>
-          <span>{{ waiting.length }} 人</span>
-        </header>
+        <el-space class="action-row" wrap>
+          <el-button type="success" :disabled="isBusy" @click="handleEnableStudentJoin">开启本节课排队</el-button>
+          <el-button type="warning" :disabled="isBusy" @click="handleDisableStudentJoin">关闭排队</el-button>
+          <el-popconfirm
+            title="刷新后旧的学生入口将失效，是否继续？"
+            confirm-button-text="刷新"
+            cancel-button-text="取消"
+            @confirm="handleRefreshStudentJoinCode"
+          >
+            <template #reference>
+              <el-button :disabled="isBusy">刷新学生入口</el-button>
+            </template>
+          </el-popconfirm>
+          <el-button @click="handleCopyStudentEntry">复制学生入口</el-button>
+          <el-button type="primary" @click="handleCopyRoomInfo">复制教师信息</el-button>
+        </el-space>
+      </template>
 
-        <ol v-if="waiting.length" class="queue-list">
-          <li v-for="(student, index) in waiting" :key="student._id">
-            <span class="queue-index">{{ index + 1 }}</span>
-            <strong>{{ student.studentNo }}</strong>
-            <div class="queue-actions">
-              <button type="button" :disabled="isBusy || index === 0" @click="handlePrioritize(student)">置顶</button>
-              <button type="button" :disabled="isBusy" @click="handleRemove(student)">删除</button>
+      <el-alert
+        v-if="notice"
+        class="entry-notice"
+        :closable="false"
+        show-icon
+        :title="notice.text"
+        :type="notice.kind"
+      />
+    </el-card>
+
+    <template v-if="isTeacherAuthorized">
+      <el-card class="section-card" shadow="never">
+        <template #header>
+          <div class="card-header card-header--split">
+            <h2>当前叫号</h2>
+            <el-tag :type="currentStudentNo ? 'success' : 'info'" effect="light">
+              {{ currentStudentNo ? '进行中' : '等待叫号' }}
+            </el-tag>
+          </div>
+        </template>
+
+        <el-row class="status-grid" :gutter="16">
+          <el-col :xs="24" :md="10">
+            <div class="metric-panel metric-panel--large" aria-live="polite">
+              <span>当前正在背书</span>
+              <strong>{{ currentStudentNo ?? '等待叫号' }}</strong>
             </div>
-          </li>
-        </ol>
+          </el-col>
+          <el-col :xs="24" :md="14">
+            <el-space class="teacher-actions" wrap>
+              <el-button type="primary" :loading="isBusy" @click="handleCallNext">下一位</el-button>
+              <el-button :disabled="isBusy || !currentStudentNo" @click="handleRepeatCall">重复呼叫</el-button>
+              <el-button type="success" :disabled="isBusy || !current" @click="handleMarkDone">通过/完成</el-button>
+              <el-popconfirm
+                v-if="current"
+                title="确定要移除当前学生吗？"
+                confirm-button-text="移除"
+                cancel-button-text="取消"
+                @confirm="handleRemove(current)"
+              >
+                <template #reference>
+                  <el-button type="danger" :disabled="isBusy">移除当前</el-button>
+                </template>
+              </el-popconfirm>
+              <el-popconfirm
+                title="确定要清空等待队列并移除当前叫到的学生吗？"
+                confirm-button-text="清空"
+                cancel-button-text="取消"
+                @confirm="handleClearQueue"
+              >
+                <template #reference>
+                  <el-button type="danger" :disabled="isBusy">清空队列</el-button>
+                </template>
+              </el-popconfirm>
+            </el-space>
+          </el-col>
+        </el-row>
+      </el-card>
 
-        <p v-else class="empty-text">{{ isWatching ? '正在连接实时队列...' : '暂无等待学生' }}</p>
-      </article>
+      <el-card class="section-card" shadow="never">
+        <template #header>
+          <div class="card-header card-header--split">
+            <h2>等待队列</h2>
+            <el-tag type="info" effect="plain">{{ waiting.length }} 人</el-tag>
+          </div>
+        </template>
 
-      <article class="list-panel list-panel--completed">
-        <header>
-          <h2>已通过</h2>
-          <span>{{ completedQueue.length }} 人</span>
-        </header>
+        <el-table v-if="waiting.length" class="queue-table" :data="waiting">
+          <el-table-column label="排名" width="80">
+            <template #default="{ $index }">{{ $index + 1 }}</template>
+          </el-table-column>
+          <el-table-column label="学号" min-width="120" prop="studentNo" />
+          <el-table-column label="状态" min-width="110">
+            <template #default="{ row }">
+              <el-tag :type="getQueueStatusTagType(row.status)" effect="light">
+                {{ getQueueStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="加入时间" min-width="120">
+            <template #default="{ row }">{{ formatQueueTime(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="210" fixed="right">
+            <template #default="{ row, $index }">
+              <el-space wrap>
+                <el-popconfirm
+                  title="确定要将该学生排到最前吗？"
+                  confirm-button-text="排到最前"
+                  cancel-button-text="取消"
+                  @confirm="handlePrioritize(row)"
+                >
+                  <template #reference>
+                    <el-button size="small" type="warning" :disabled="isBusy || $index === 0">排到最前</el-button>
+                  </template>
+                </el-popconfirm>
+                <el-popconfirm
+                  title="确定要移除该学生吗？"
+                  confirm-button-text="移除"
+                  cancel-button-text="取消"
+                  @confirm="handleRemove(row)"
+                >
+                  <template #reference>
+                    <el-button size="small" type="danger" :disabled="isBusy">移除</el-button>
+                  </template>
+                </el-popconfirm>
+              </el-space>
+            </template>
+          </el-table-column>
+        </el-table>
 
-        <ol v-if="completedQueue.length" class="queue-list completed-list">
-          <li v-for="(student, index) in completedQueue" :key="student._id">
-            <span class="queue-index">{{ index + 1 }}</span>
-            <strong>{{ student.studentNo }}</strong>
-          </li>
-        </ol>
+        <el-empty v-else :description="isWatching ? '正在连接实时队列...' : '暂无等待学生'" />
+      </el-card>
 
-        <p v-else class="empty-text">暂无已通过学生</p>
-      </article>
-    </section>
+      <el-card class="section-card" shadow="never">
+        <template #header>
+          <div class="card-header card-header--split">
+            <h2>已通过</h2>
+            <el-tag type="success" effect="plain">{{ completedQueue.length }} 人</el-tag>
+          </div>
+        </template>
+
+        <el-table v-if="completedQueue.length" class="queue-table" :data="completedQueue">
+          <el-table-column label="序号" width="80">
+            <template #default="{ $index }">{{ $index + 1 }}</template>
+          </el-table-column>
+          <el-table-column label="学号" min-width="120" prop="studentNo" />
+          <el-table-column label="状态" min-width="110">
+            <template #default="{ row }">
+              <el-tag :type="getQueueStatusTagType(row.status)" effect="light">
+                {{ getQueueStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="完成时间" min-width="120">
+            <template #default="{ row }">{{ formatQueueTime(row.updatedAt) }}</template>
+          </el-table-column>
+        </el-table>
+
+        <el-empty v-else description="暂无已通过学生" />
+      </el-card>
     </template>
   </main>
 </template>

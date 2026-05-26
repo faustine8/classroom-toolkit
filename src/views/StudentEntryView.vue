@@ -72,29 +72,39 @@ onMounted(() => {
 
 <template>
   <main class="page student-entry-page">
-    <section class="create-panel student-entry-panel">
-      <p class="eyebrow">学生端</p>
-      <h1>欢迎使用博雅背诵排号</h1>
+    <el-card class="entry-card student-entry-card" shadow="never">
+      <template #header>
+        <div class="card-header">
+          <el-tag effect="light">学生端</el-tag>
+          <h1>欢迎使用博雅背诵排号</h1>
+        </div>
+      </template>
 
-      <form class="student-entry-form" @submit.prevent="enterStudentRoom()">
-        <label for="student-entry-join-code">请输入排队码</label>
-        <input
-          id="student-entry-join-code"
-          v-model="joinCodeInput"
-          autocomplete="off"
-          maxlength="8"
-          placeholder="请输入排队码"
-          type="text"
-          @input="joinCodeInput = normalizeStudentJoinCode(joinCodeInput)"
-        />
-        <button class="button button--primary" :disabled="isEntering" type="submit">
-          {{ isEntering ? '进入中...' : '进入房间' }}
-        </button>
-      </form>
+      <el-form label-position="top" @submit.prevent="enterStudentRoom()">
+        <el-form-item label="请输入排队码">
+          <el-input
+            id="student-entry-join-code"
+            v-model="joinCodeInput"
+            autocomplete="off"
+            maxlength="8"
+            placeholder="请输入排队码"
+            size="large"
+            @input="joinCodeInput = normalizeStudentJoinCode(joinCodeInput)"
+          />
+        </el-form-item>
+        <el-button :loading="isEntering" native-type="submit" size="large" type="primary">
+          进入房间
+        </el-button>
+      </el-form>
 
-      <div v-if="notice" class="notice" :class="`notice--${notice.kind}`" role="status">
-        {{ notice.text }}
-      </div>
-    </section>
+      <el-alert
+        v-if="notice"
+        class="entry-notice"
+        :closable="false"
+        show-icon
+        :title="notice.text"
+        :type="notice.kind"
+      />
+    </el-card>
   </main>
 </template>
