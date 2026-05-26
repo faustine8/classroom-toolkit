@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import AppHero from '@/components/AppHero.vue';
 import { getBufferAfterSubmit } from '@/features/recitation/inputBuffer';
 import { useClassroomStore } from '@/stores/classroomStore';
 
@@ -117,16 +118,12 @@ onBeforeUnmount(() => {
 
 <template>
   <main v-if="session" class="page run-page">
-    <header class="page-header run-header">
-      <div>
-        <p class="eyebrow">背书排号</p>
-        <h1>{{ session.title }}</h1>
-      </div>
-      <div class="header-actions">
+    <AppHero compact eyebrow="背书排号" :title="session.title" subtitle="本地课堂队列管理">
+      <template #actions>
         <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
         <RouterLink class="button button--ghost" to="/recitation">新建课堂</RouterLink>
-      </div>
-    </header>
+      </template>
+    </AppHero>
 
     <section class="current-panel" :class="{ 'current-panel--empty': !currentStudent }" aria-live="polite">
       <p>当前正在背书</p>

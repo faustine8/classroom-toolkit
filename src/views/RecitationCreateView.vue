@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import AppHero from '@/components/AppHero.vue';
 import { useClassroomStore } from '@/stores/classroomStore';
 
 const router = useRouter();
@@ -26,13 +27,11 @@ function continueActiveSession() {
 
 <template>
   <main class="page create-page">
-    <header class="page-header">
-      <div>
-        <p class="eyebrow">背书排号</p>
-        <h1>创建课堂</h1>
-      </div>
-      <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
-    </header>
+    <AppHero compact eyebrow="背书排号" title="创建课堂" subtitle="创建一个本地课堂队列，适合单设备临时使用。">
+      <template #actions>
+        <RouterLink class="button button--secondary" to="/">返回首页</RouterLink>
+      </template>
+    </AppHero>
 
     <form class="create-panel" @submit.prevent="createSession">
       <label for="session-title">课堂标题</label>

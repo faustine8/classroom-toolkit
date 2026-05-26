@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import AppHero from '@/components/AppHero.vue';
 import {
   normalizeTeacherPin,
   rememberTeacherPinAuthorization
@@ -189,13 +190,11 @@ async function enterStudentRoom() {
 
 <template>
   <main class="page home-page">
-    <section class="home-hero">
-      <div>
-        <p class="eyebrow">Classroom Toolkit</p>
-        <h1>课堂工具集</h1>
-        <p class="hero-copy">固定房间保存班级、科目、房间码和 PIN，老师端和学生端通过 CloudBase 实时同步队列。</p>
-      </div>
-    </section>
+    <AppHero
+      eyebrow="Classroom Toolkit"
+      title="班级背诵排号系统"
+      subtitle="固定房间保存班级、科目、房间码和 PIN，老师端和学生端通过 CloudBase 实时同步队列。"
+    />
 
     <section class="room-entry-grid" aria-label="背书排号房间入口">
       <el-card class="entry-card" shadow="never">

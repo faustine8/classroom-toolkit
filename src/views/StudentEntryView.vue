@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import AppHero from '@/components/AppHero.vue';
 import { setCurrentRoom } from '@/features/recitation/room';
 import {
   getRoomByStudentJoinCode,
@@ -72,14 +73,20 @@ onMounted(() => {
 
 <template>
   <main class="page student-entry-page">
-    <el-card class="entry-card student-entry-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <el-tag effect="light">学生端</el-tag>
-          <h1>欢迎使用博雅背诵排号</h1>
-        </div>
+    <AppHero
+      compact
+      eyebrow="学生端"
+      title="加入背诵排号"
+      subtitle="输入老师提供的排队码，进入本节课队列。"
+    >
+      <template #actions>
+        <RouterLink custom to="/" v-slot="{ navigate }">
+          <el-button @click="navigate">返回首页</el-button>
+        </RouterLink>
       </template>
+    </AppHero>
 
+    <el-card class="entry-card student-entry-card" shadow="never">
       <el-form label-position="top" @submit.prevent="enterStudentRoom()">
         <el-form-item label="请输入排队码">
           <el-input

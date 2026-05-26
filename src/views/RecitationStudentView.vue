@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, type InputInstance } from 'element-plus';
+import AppHero from '@/components/AppHero.vue';
 import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import { STUDENT_NO_VALIDATION_MESSAGE, normalizeStudentNo } from '@/features/recitation/sessionLogic';
 import {
@@ -519,20 +520,20 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="page run-page queue-page">
-    <el-card class="section-card" shadow="never">
-      <template #header>
-        <div class="card-header card-header--split">
-          <div>
-            <el-tag effect="light">学生端</el-tag>
-            <h1>{{ roomTitle || '学生排号' }}</h1>
-            <p>学生排号</p>
-          </div>
-          <RouterLink custom :to="{ name: 'student-entry' }" v-slot="{ navigate }">
-            <el-button @click="navigate">更换房间</el-button>
-          </RouterLink>
-        </div>
+    <AppHero
+      compact
+      eyebrow="学生端"
+      :title="roomTitle || '学生排号'"
+      subtitle="查看当前叫号，输入学号加入等待队列。"
+    >
+      <template #actions>
+        <RouterLink custom :to="{ name: 'student-entry' }" v-slot="{ navigate }">
+          <el-button @click="navigate">更换房间</el-button>
+        </RouterLink>
       </template>
+    </AppHero>
 
+    <el-card class="section-card" shadow="never">
       <el-row class="status-grid" :gutter="16">
         <el-col :xs="24" :sm="12">
           <div class="metric-panel metric-panel--large" aria-live="polite">

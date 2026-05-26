@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import AppHero from '@/components/AppHero.vue';
 import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import {
   getRememberedTeacherPin,
@@ -347,25 +348,23 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="page run-page queue-page">
-    <el-card class="section-card" shadow="never">
-      <template #header>
-        <div class="card-header card-header--split">
-          <div>
-            <el-tag type="warning" effect="light">老师端 · {{ sessionCode }}</el-tag>
-            <h1>{{ isTeacherAuthorized ? roomTitle : '教师管理' }}</h1>
-            <p>{{ isTeacherAuthorized ? '当前叫号与队列管理' : '请输入老师 PIN 后进入管理' }}</p>
-          </div>
-          <el-space wrap>
-            <RouterLink custom to="/" v-slot="{ navigate }">
-              <el-button @click="navigate">返回首页</el-button>
-            </RouterLink>
-            <RouterLink custom :to="{ name: 'student-entry' }" v-slot="{ navigate }">
-              <el-button @click="navigate">学生端</el-button>
-            </RouterLink>
-          </el-space>
-        </div>
+    <AppHero
+      compact
+      :eyebrow="`老师端 · ${sessionCode}`"
+      :title="isTeacherAuthorized ? roomTitle : '教师管理'"
+      :subtitle="isTeacherAuthorized ? '当前叫号与队列管理' : '请输入老师 PIN 后进入管理'"
+    >
+      <template #actions>
+        <RouterLink custom to="/" v-slot="{ navigate }">
+          <el-button @click="navigate">返回首页</el-button>
+        </RouterLink>
+        <RouterLink custom :to="{ name: 'student-entry' }" v-slot="{ navigate }">
+          <el-button @click="navigate">学生端</el-button>
+        </RouterLink>
       </template>
+    </AppHero>
 
+    <el-card class="section-card" shadow="never">
       <el-form v-if="!isTeacherAuthorized" class="join-form" label-position="top" @submit.prevent="authorizeTeacher">
         <el-form-item label="老师 PIN">
           <el-input
