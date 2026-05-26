@@ -433,34 +433,66 @@ onBeforeUnmount(() => {
             </div>
           </el-col>
           <el-col :xs="24" :md="14">
-            <el-space class="teacher-actions" wrap>
-              <el-button type="primary" :loading="isBusy" @click="handleCallNext">下一位</el-button>
-              <el-button :disabled="isBusy || !currentStudentNo" @click="handleRepeatCall">重复呼叫</el-button>
-              <el-button type="success" :disabled="isBusy || !current" @click="handleMarkDone">通过/完成</el-button>
-              <el-popconfirm
-                v-if="current"
-                width="260"
-                title="确定要移除当前学生吗？"
-                confirm-button-text="移除"
-                cancel-button-text="取消"
-                @confirm="handleRemove(current)"
-              >
-                <template #reference>
-                  <el-button type="danger" :disabled="isBusy">移除当前</el-button>
-                </template>
-              </el-popconfirm>
-              <el-popconfirm
-                width="260"
-                title="确定要清空等待队列并移除当前叫到的学生吗？"
-                confirm-button-text="清空"
-                cancel-button-text="取消"
-                @confirm="handleClearQueue"
-              >
-                <template #reference>
-                  <el-button type="danger" :disabled="isBusy">清空队列</el-button>
-                </template>
-              </el-popconfirm>
-            </el-space>
+            <div class="teacher-actions" role="group" aria-label="当前叫号操作">
+              <div class="teacher-actions__main">
+                <el-button
+                  class="call-action-button"
+                  type="primary"
+                  size="large"
+                  :loading="isBusy"
+                  @click="handleCallNext"
+                >
+                  下一位
+                </el-button>
+                <el-button
+                  class="call-action-button"
+                  size="large"
+                  :disabled="isBusy || !currentStudentNo"
+                  @click="handleRepeatCall"
+                >
+                  重复呼叫
+                </el-button>
+                <el-button
+                  class="call-action-button"
+                  type="success"
+                  size="large"
+                  :disabled="isBusy || !current"
+                  @click="handleMarkDone"
+                >
+                  通过/完成
+                </el-button>
+              </div>
+
+              <div class="teacher-actions__danger-zone">
+                <el-popconfirm
+                    v-if="current"
+                    width="260"
+                    title="确定要移除当前学生吗？"
+                    confirm-button-text="移除"
+                    cancel-button-text="取消"
+                    @confirm="handleRemove(current)"
+                >
+                  <template #reference>
+                    <el-button class="call-action-button" type="danger" size="large" :disabled="isBusy">
+                      移除当前
+                    </el-button>
+                  </template>
+                </el-popconfirm>
+                <el-popconfirm
+                  width="260"
+                  title="确定要清空等待队列并移除当前叫到的学生吗？"
+                  confirm-button-text="清空"
+                  cancel-button-text="取消"
+                  @confirm="handleClearQueue"
+                >
+                  <template #reference>
+                    <el-button class="call-action-button" type="danger" size="large" :disabled="isBusy">
+                      清空队列
+                    </el-button>
+                  </template>
+                </el-popconfirm>
+              </div>
+            </div>
           </el-col>
         </el-row>
       </el-card>

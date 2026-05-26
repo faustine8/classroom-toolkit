@@ -459,11 +459,45 @@ h2 {
 }
 
 .teacher-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 170px;
+  gap: 18px;
+}
+
+.teacher-actions__main,
+.teacher-actions__danger-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.teacher-actions__danger-zone {
+  padding-left: 8px;
+  border-left: 1px solid #dfe6dd;
   align-content: start;
 }
 
-.teacher-actions .el-button {
-  min-width: 112px;
+.teacher-actions .call-action-button {
+  min-width: 128px;
+  height: 44px;
+  font-weight: 800;
+}
+
+.teacher-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+@media (max-width: 720px) {
+  .teacher-actions__danger-zone {
+    padding-left: 0;
+    border-left: 0;
+  }
 }
 
 .queue-table {
