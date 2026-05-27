@@ -636,4 +636,47 @@ describe('cloudbaseService', () => {
     const archiveRecords = await db.collection('archivedTasks').where({ roomCode: 'A7K2' }).get();
     expect(archiveRecords.data).toEqual([]);
   });
+
+  it('lists archived tasks for the current room with newest records first', async () => {
+    const { db, service } = createFakeService();
+
+    await db.collection('archivedTasks').doc('old-record').set({
+      id: 'old-record',
+      roomId: 'A7K2',
+      roomCode: 'A7K2',
+      archivedAt: '2026-05-21T00:01:00.000Z',
+      totalStudents: 50,
+      completedCount: 1,
+      unfinishedCount: 49,
+      completedStudentNumbers: [7],
+      unfinishedStudentNumbers: [1, 2, 3]
+    });
+    await db.collection('archivedTasks').doc('other-room-record').set({
+      id: 'other-room-record',
+      roomId: 'B8M3',
+      roomCode: 'B8M3',
+      archivedAt: '2026-05-21T00:03:00.000Z',
+      totalStudents: 50,
+      completedCount: 50,
+      unfinishedCount: 0,
+      completedStudentNumbers: [],
+      unfinishedStudentNumbers: []
+    });
+    await db.collection('archivedTasks').doc('new-record').set({
+      id: 'new-record',
+      roomId: 'A7K2',
+      roomCode: 'A7K2',
+      archivedAt: '2026-05-21T00:02:00.000Z',
+      totalStudents: 50,
+      completedCount: 2,
+      unfinishedCount: 48,
+      completedStudentNumbers: [7, 8],
+      unfinishedStudentNumbers: [1, 2]
+    });
+
+    await expect(service.listArchivedTasks('a7k2')).resolves.toMatchObject([
+      { id: 'new-record', roomCode: 'A7K2', completedCount: 2, unfinishedStudentNumbers: [1, 2] },
+      { id: 'old-record', roomCode: 'A7K2', completedCount: 1, unfinishedStudentNumbers: [1, 2, 3] }
+    ]);
+  });
 });

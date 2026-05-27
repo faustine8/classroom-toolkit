@@ -29,6 +29,8 @@ import {
   verifyTeacherPin,
   watchQueue,
   archiveCurrentTask,
+  listArchivedTasks,
+  type ArchivedTask,
   type QueueItem,
   type QueueStatus,
   type Room
@@ -49,6 +51,10 @@ const isWatching = ref(false);
 const teacherPinInput = ref('');
 const roomInfoActiveNames = ref<string[]>([]);
 const isTeacherAuthorized = ref(false);
+const isArchiveDrawerOpen = ref(false);
+const isArchiveHistoryLoading = ref(false);
+const archivedTasks = ref<ArchivedTask[]>([]);
+const archiveHistoryActiveNames = ref<string[]>([]);
 let stopWatching: (() => void) | null = null;
 
 const roomTitle = computed(() => formatRoomTitle(room.value ?? currentRoom));
@@ -99,6 +105,28 @@ function formatQueueTime(value: string): string {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function formatArchiveTime(value: string): string {
+  if (!value) {
+    return '-';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const pad = (part: number) => String(part).padStart(2, '0');
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+    date.getMinutes()
+  )}`;
+}
+
+function buildArchivedCompletionMatrix(task: ArchivedTask) {
+  return buildCompletionMatrix(new Set(task.completedStudentNumbers));
 }
 
 function getQueueStatusText(status: QueueStatus): string {
@@ -367,8 +395,30 @@ async function handleArchiveCurrentTask() {
 
   await runAction(async () => {
     const archivedTask = await archiveCurrentTask(sessionCode.value);
+    archivedTasks.value = [archivedTask, ...archivedTasks.value.filter((task) => task.id !== archivedTask.id)];
     showNotice('success', `已归档当前任务，完成 ${archivedTask.completedCount} / ${CLASS_STUDENT_TOTAL} 人`);
   });
+}
+
+async function loadArchiveHistory() {
+  if (!isTeacherAuthorized.value || isArchiveHistoryLoading.value) {
+    return;
+  }
+
+  isArchiveHistoryLoading.value = true;
+
+  try {
+    archivedTasks.value = await listArchivedTasks(sessionCode.value);
+  } catch (error) {
+    showNotice('error', getErrorMessage(error));
+  } finally {
+    isArchiveHistoryLoading.value = false;
+  }
+}
+
+async function handleOpenArchiveHistory() {
+  isArchiveDrawerOpen.value = true;
+  await loadArchiveHistory();
 }
 
 onMounted(async () => {
@@ -543,6 +593,7 @@ onBeforeUnmount(() => {
             <div class="completion-summary" aria-label="完成统计">
               <el-tag type="success" effect="plain">已完成 {{ completedStudentCount }} / {{ CLASS_STUDENT_TOTAL }}</el-tag>
               <el-tag type="danger" effect="plain">未完成 {{ incompleteStudentCount }}</el-tag>
+              <el-button :disabled="isBusy" @click="handleOpenArchiveHistory">历史归档</el-button>
               <el-button
                 type="warning"
                 :disabled="isBusy || !hasArchivableTaskData"
@@ -576,6 +627,59 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </el-card>
+
+      <el-drawer
+        v-model="isArchiveDrawerOpen"
+        class="archive-history-drawer"
+        title="历史归档记录"
+        size="min(720px, 92vw)"
+        @open="loadArchiveHistory"
+      >
+        <div v-loading="isArchiveHistoryLoading" class="archive-history">
+          <el-empty
+            v-if="!isArchiveHistoryLoading && archivedTasks.length === 0"
+            description="暂无历史归档记录"
+          />
+
+          <el-collapse v-else v-model="archiveHistoryActiveNames" class="archive-history__collapse">
+            <el-collapse-item v-for="task in archivedTasks" :key="task.id" :name="task.id">
+              <template #title>
+                <div class="archive-record__title">
+                  <strong>{{ formatArchiveTime(task.archivedAt) }}</strong>
+                  <span>已完成 {{ task.completedCount }} / {{ task.totalStudents }}</span>
+                  <span>未完成 {{ task.unfinishedCount }} 人</span>
+                </div>
+              </template>
+
+              <div class="archive-record">
+                <div class="archive-record__summary">
+                  <p>已完成 {{ task.completedCount }} / {{ task.totalStudents }}，未完成 {{ task.unfinishedCount }} 人</p>
+                </div>
+
+                <div class="completion-matrix completion-matrix--archive" aria-label="历史归档完成情况">
+                  <div
+                    v-for="(row, rowIndex) in buildArchivedCompletionMatrix(task)"
+                    :key="`${task.id}-${rowIndex}`"
+                    class="completion-matrix__row"
+                  >
+                    <span
+                      v-for="student in row"
+                      :key="student.studentNo"
+                      class="completion-matrix__cell"
+                      :class="{
+                        'completion-matrix__cell--done': student.isCompleted,
+                        'completion-matrix__cell--pending': !student.isCompleted
+                      }"
+                    >
+                      {{ student.label }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
+        </div>
+      </el-drawer>
 
       <el-card class="section-card" shadow="never">
         <template #header>

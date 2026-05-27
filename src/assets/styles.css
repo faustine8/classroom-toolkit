@@ -567,6 +567,61 @@ h2 {
   background: var(--el-color-danger);
 }
 
+.archive-history {
+  min-height: 220px;
+}
+
+.archive-history__collapse {
+  border-top: 0;
+}
+
+.archive-history__collapse .el-collapse-item__header {
+  min-height: 72px;
+  padding: 8px 0;
+}
+
+.archive-record__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+  color: #39473e;
+  line-height: 1.35;
+}
+
+.archive-record__title strong {
+  color: #16211b;
+  font-size: 1rem;
+}
+
+.archive-record {
+  display: grid;
+  gap: 16px;
+  padding: 0 0 18px;
+}
+
+.archive-record__summary {
+  display: grid;
+  gap: 10px;
+  color: #39473e;
+}
+
+.archive-record__summary p {
+  margin: 0;
+  font-weight: 800;
+}
+
+.completion-matrix--archive .completion-matrix__row {
+  grid-template-columns: repeat(10, minmax(52px, 1fr));
+  min-width: 592px;
+}
+
+.completion-matrix--archive .completion-matrix__cell {
+  min-height: 44px;
+  font-size: 1rem;
+}
+
 @media (max-width: 720px) {
   .teacher-actions__danger-zone {
     padding-left: 0;

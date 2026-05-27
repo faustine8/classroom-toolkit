@@ -337,6 +337,47 @@ function toQueueItems(raw: unknown, fallbackRoomId = ''): QueueItem[] {
     .filter((item): item is QueueItem => item !== null);
 }
 
+function toNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item >= 1 && item <= CLASS_STUDENT_TOTAL);
+}
+
+function toArchivedTask(raw: unknown): ArchivedTask | null {
+  const [data] = getDataArray<Record<string, unknown>>(raw);
+
+  if (!data) {
+    return null;
+  }
+
+  const id = String(data.id ?? data._id ?? '');
+  const roomCode = normalizeSessionCode(String(data.roomCode ?? ''));
+
+  if (!id || !roomCode) {
+    return null;
+  }
+
+  return {
+    id,
+    roomId: String(data.roomId ?? ''),
+    roomCode,
+    roomTitle: typeof data.roomTitle === 'string' ? data.roomTitle : undefined,
+    archivedAt: String(data.archivedAt ?? ''),
+    totalStudents: toNonNegativeInteger(data.totalStudents) || CLASS_STUDENT_TOTAL,
+    completedCount: toNonNegativeInteger(data.completedCount),
+    unfinishedCount: toNonNegativeInteger(data.unfinishedCount),
+    completedStudentNumbers: toNumberArray(data.completedStudentNumbers),
+    unfinishedStudentNumbers: toNumberArray(data.unfinishedStudentNumbers),
+    completedRecords: toQueueItems(data.completedRecords, String(data.roomId ?? '')),
+    waitingQueueSnapshot: toQueueItems(data.waitingQueueSnapshot, String(data.roomId ?? '')),
+    currentCallingSnapshot: toQueueItem(data.currentCallingSnapshot, String(data.roomId ?? ''))
+  };
+}
+
 function buildQueueItemId(roomId: string, studentNo: string): string {
   return `${roomId}_${studentNo}`;
 }
@@ -1038,6 +1079,20 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return archivedTask;
   }
 
+  async function listArchivedTasks(sessionCode: string): Promise<ArchivedTask[]> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+    const records = await db
+      .collection(ARCHIVED_TASK_COLLECTION)
+      .where({ roomCode: code })
+      .orderBy('archivedAt', 'desc')
+      .get();
+
+    return getDataArray<Record<string, unknown>>(records.data)
+      .map((item) => toArchivedTask(item))
+      .filter((item): item is ArchivedTask => item !== null);
+  }
+
   async function watchQueue(
     sessionCode: string,
     callback: (snapshot: QueueSnapshot) => void,
@@ -1116,7 +1171,8 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     repeatCall,
     removeQueueItem,
     clearQueue,
-    archiveCurrentTask
+    archiveCurrentTask,
+    listArchivedTasks
   };
 }
 
@@ -1139,3 +1195,4 @@ export const repeatCall = defaultService.repeatCall;
 export const removeQueueItem = defaultService.removeQueueItem;
 export const clearQueue = defaultService.clearQueue;
 export const archiveCurrentTask = defaultService.archiveCurrentTask;
+export const listArchivedTasks = defaultService.listArchivedTasks;
