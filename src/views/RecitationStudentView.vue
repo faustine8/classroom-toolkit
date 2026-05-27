@@ -14,6 +14,7 @@ import {
   type QueueItem,
   type Room
 } from '@/services/cloudbaseService';
+import { playCallAudio, playTestAudio, stopCallAudio } from '@/utils/callAudioPlayer';
 import { getErrorMessage } from '@/utils/errorMessage';
 
 type NoticeKind = 'success' | 'warning' | 'info' | 'error';
@@ -21,29 +22,6 @@ type NoticeKind = 'success' | 'warning' | 'info' | 'error';
 const VOICE_ENABLED_STORAGE_KEY = 'classroom-toolkit:recitation-voice-enabled';
 const LEGACY_CALL_ALERT_STORAGE_KEY = 'classroom-toolkit:recitation-call-alert-enabled';
 const STUDENT_NO_DIGITS_PATTERN = /^\d+$/;
-const PREFERRED_CHINESE_VOICE_KEYWORDS = [
-  'Microsoft Yaoyao',
-  'Microsoft Huihui',
-  'Microsoft Kangkang',
-
-  // 如果 Edge/系统里有新版自然语音，就优先尝试这些
-  'Microsoft Xiaoxiao',
-  'Microsoft Xiaoyi',
-  'Microsoft Yunxi',
-  'Microsoft Yunyang',
-
-  // 兜底关键词
-  'Yaoyao',
-  'Huihui',
-  'Kangkang',
-  'Xiaoxiao',
-  'Xiaoyi',
-  'Yunxi',
-  'Yunyang',
-  'Chinese',
-  '中文',
-  '普通话'
-]
 
 const route = useRoute();
 const sessionCode = computed(() => normalizeSessionCode(String(route.params.sessionCode ?? '')));
@@ -62,12 +40,8 @@ const isWatching = ref(true);
 const voiceEnabled = ref(readStoredVoiceEnabled());
 const lastAnnouncedCurrentNo = ref<string | null>(null);
 const lastHandledAnnounceVersion = ref(0);
-const preferredChineseVoice = ref<SpeechSynthesisVoice | null>(null);
 let stopWatching: (() => void) | null = null;
 let hasReceivedInitialQueueSnapshot = false;
-let hasShownVoicePlaybackHint = false;
-let reminderAudioContext: AudioContext | null = null;
-let previousVoicesChangedHandler: SpeechSynthesis['onvoiceschanged'] = null;
 let joinFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
@@ -179,165 +153,29 @@ function persistVoiceEnabled() {
   window.localStorage.setItem(VOICE_ENABLED_STORAGE_KEY, String(voiceEnabled.value));
 }
 
-function buildAnnouncementText(currentNo: string, nextNo: string | null): string {
-  if (nextNo) {
-    return `请 ${currentNo} 号来背书，${nextNo} 号请准备`;
+function parseCallAudioNo(studentNo: string | null): number | null {
+  if (!studentNo) {
+    return null;
   }
 
-  return `请 ${currentNo} 号来背书`;
-}
+  const parsedNo = Number(studentNo);
 
-function selectPreferredChineseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
-  for (const keyword of PREFERRED_CHINESE_VOICE_KEYWORDS) {
-    const matchedVoice = voices.find((voice) => voice.name.toLowerCase().includes(keyword));
-
-    if (matchedVoice) {
-      return matchedVoice;
-    }
+  if (!Number.isInteger(parsedNo)) {
+    console.warn(`[call-audio] Invalid student number: ${studentNo}`);
+    return null;
   }
 
-  return (
-    voices.find((voice) => voice.lang.toLowerCase() === 'zh-cn') ??
-    voices.find((voice) => voice.lang.toLowerCase().startsWith('zh')) ??
-    null
-  );
+  return parsedNo;
 }
 
-function syncPreferredChineseVoice() {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    preferredChineseVoice.value = null;
+async function announceCall(currentNo: string, nextNo: string | null) {
+  const currentAudioNo = parseCallAudioNo(currentNo);
+
+  if (currentAudioNo === null) {
     return;
   }
 
-  preferredChineseVoice.value = selectPreferredChineseVoice(window.speechSynthesis.getVoices());
-}
-
-function handleVoicesChanged(event: Event) {
-  previousVoicesChangedHandler?.call(window.speechSynthesis, event);
-  syncPreferredChineseVoice();
-}
-
-function setupSpeechVoices() {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    return;
-  }
-
-  syncPreferredChineseVoice();
-  previousVoicesChangedHandler = window.speechSynthesis.onvoiceschanged;
-  window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
-}
-
-function cleanupSpeechVoices() {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    return;
-  }
-
-  if (window.speechSynthesis.onvoiceschanged === handleVoicesChanged) {
-    window.speechSynthesis.onvoiceschanged = previousVoicesChangedHandler;
-  }
-
-  previousVoicesChangedHandler = null;
-}
-
-function getAudioContextConstructor(): typeof AudioContext | undefined {
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-
-  return (
-    window.AudioContext ??
-    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  );
-}
-
-async function unlockReminderAudio() {
-  const AudioContextConstructor = getAudioContextConstructor();
-
-  if (!AudioContextConstructor) {
-    return;
-  }
-
-  try {
-    if (!reminderAudioContext || reminderAudioContext.state === 'closed') {
-      reminderAudioContext = new AudioContextConstructor();
-    }
-
-    if (reminderAudioContext.state === 'suspended') {
-      await reminderAudioContext.resume();
-    }
-  } catch {
-    // Some browsers still block audio contexts until a fresh user gesture.
-  }
-}
-
-async function playReminderBeep() {
-  await unlockReminderAudio();
-
-  if (!reminderAudioContext || reminderAudioContext.state !== 'running') {
-    return;
-  }
-
-  try {
-    const startedAt = reminderAudioContext.currentTime;
-    const endedAt = startedAt + 3;
-    const oscillator = reminderAudioContext.createOscillator();
-    const gain = reminderAudioContext.createGain();
-
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, startedAt);
-    oscillator.connect(gain);
-    gain.connect(reminderAudioContext.destination);
-    gain.gain.setValueAtTime(0, startedAt);
-    gain.gain.linearRampToValueAtTime(0.14, startedAt + 0.08);
-    gain.gain.setValueAtTime(0.14, endedAt - 0.2);
-    gain.gain.linearRampToValueAtTime(0, endedAt);
-    oscillator.start(startedAt);
-    oscillator.stop(endedAt);
-  } catch {
-    // If the fallback sound cannot be started, keep the UI state unchanged.
-  }
-}
-
-function speakAnnouncement(text: string) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
-    showVoicePlaybackHint();
-    void playReminderBeep();
-    return;
-  }
-
-  try {
-    const utterance = new SpeechSynthesisUtterance(text);
-    syncPreferredChineseVoice();
-
-    utterance.lang = preferredChineseVoice.value?.lang ?? 'zh-CN';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.12;
-    utterance.volume = 1;
-    utterance.voice = preferredChineseVoice.value;
-    utterance.onerror = () => {
-      showVoicePlaybackHint();
-      void playReminderBeep();
-    };
-
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    showVoicePlaybackHint();
-    void playReminderBeep();
-  }
-}
-
-function announceCall(currentNo: string, nextNo: string | null) {
-  speakAnnouncement(buildAnnouncementText(currentNo, nextNo));
-}
-
-function showVoicePlaybackHint() {
-  if (hasShownVoicePlaybackHint) {
-    return;
-  }
-
-  hasShownVoicePlaybackHint = true;
-  showNotice('info', '浏览器暂未允许自动播报，可尝试关闭后重新开启语音播报。');
+  await playCallAudio(currentAudioNo, parseCallAudioNo(nextNo));
 }
 
 function handleVoiceEnabledChange() {
@@ -346,12 +184,16 @@ function handleVoiceEnabledChange() {
   lastHandledAnnounceVersion.value = announceVersion.value;
 
   if (voiceEnabled.value) {
-    void unlockReminderAudio();
-    showNotice('success', '语音播报已开启');
+    showNotice('success', '语音播报已开启，可点击测试声音确认浏览器已允许播放');
   } else {
-    window.speechSynthesis?.cancel();
+    stopCallAudio();
     showNotice('info', '语音播报已关闭');
   }
+}
+
+async function handleTestAudio() {
+  await playTestAudio();
+  showNotice('info', '已尝试播放测试声音');
 }
 
 function handleStudentNoBeforeInput(event: Event) {
@@ -473,8 +315,6 @@ async function resolveStudentRoom(): Promise<string | null> {
 }
 
 onMounted(async () => {
-  setupSpeechVoices();
-
   try {
     const resolvedSessionCode = await resolveStudentRoom();
 
@@ -513,8 +353,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopWatching?.();
   clearJoinFeedback();
-  cleanupSpeechVoices();
-  window.speechSynthesis?.cancel();
+  stopCallAudio();
 });
 </script>
 
@@ -631,6 +470,7 @@ onBeforeUnmount(() => {
           inactive-text="关闭"
           @change="handleVoiceEnabledChange"
         />
+        <el-button @click="handleTestAudio">测试声音</el-button>
       </div>
     </el-card>
   </main>
