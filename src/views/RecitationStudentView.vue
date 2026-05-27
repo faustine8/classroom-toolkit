@@ -192,8 +192,12 @@ function handleVoiceEnabledChange() {
 }
 
 async function handleTestAudio() {
-  await playTestAudio();
-  showNotice('info', '已尝试播放测试声音');
+  const ok = await playTestAudio();
+  if (ok) {
+    showNotice('success', '测试声音播放成功');
+  } else {
+    showNotice('error', '声音播放失败，请检查浏览器权限或刷新后点击测试声音');
+  }
 }
 
 function handleStudentNoBeforeInput(event: Event) {

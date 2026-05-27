@@ -1,12 +1,13 @@
-const CALL_AUDIO_BASE_PATH = '/audio/call';
+const CALL_AUDIO_BASE_DIR = 'audio/call';
 const MIN_CALL_NO = 1;
 
 let playbackToken = 0;
 let activeAudio: HTMLAudioElement | null = null;
 let activeResolve: (() => void) | null = null;
 
-function buildCallAudioUrl(fileName: string): string {
-  return `${CALL_AUDIO_BASE_PATH}/${fileName}`;
+function getAudioUrl(fileName: string): string {
+  const base = import.meta.env.BASE_URL || '/';
+  return `${base.replace(/\/$/, '')}/${CALL_AUDIO_BASE_DIR}/${fileName}`;
 }
 
 function normalizeCallNo(value: number): number | null {
@@ -18,50 +19,85 @@ function normalizeCallNo(value: number): number | null {
   return value;
 }
 
-function buildCallAudioSources(currentNo: number, nextNo?: number | null): string[] {
+function buildCallAudioFileNames(currentNo: number, nextNo?: number | null): string[] {
   const normalizedCurrentNo = normalizeCallNo(currentNo);
 
   if (normalizedCurrentNo === null) {
     return [];
   }
 
-  const sources = [
-    buildCallAudioUrl('01_please.mp3'),
-    buildCallAudioUrl(`num_${normalizedCurrentNo}.mp3`),
-    buildCallAudioUrl('02_come.mp3')
+  const fileNames = [
+    '01_please.mp3',
+    `num_${normalizedCurrentNo}.mp3`,
+    '02_come.mp3'
   ];
 
   if (nextNo !== undefined && nextNo !== null) {
     const normalizedNextNo = normalizeCallNo(nextNo);
 
     if (normalizedNextNo !== null) {
-      sources.push(buildCallAudioUrl(`num_${normalizedNextNo}.mp3`), buildCallAudioUrl('03_wait.mp3'));
+      fileNames.push(`num_${normalizedNextNo}.mp3`, '03_wait.mp3');
     }
   }
 
-  return sources;
+  return fileNames;
 }
 
-function playAudioSegment(src: string, token: number): Promise<void> {
+function logPlaybackError(fileName: string, audioUrl: string, details: Record<string, unknown>): void {
+  const mediaError = activeAudio?.error;
+  const merged: Record<string, unknown> = {
+    fileName,
+    audioUrl,
+    ...details
+  };
+
+  if (mediaError) {
+    merged.mediaErrorCode = mediaError.code;
+    merged.mediaErrorMessage = mediaError.message || '';
+  }
+
+  const errorName = typeof details.errorName === 'string' ? details.errorName : '';
+
+  if (errorName === 'NotAllowedError') {
+    merged.hint = '浏览器自动播放限制：请先点击"测试声音"按钮解除限制';
+  } else if (mediaError && (mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED || mediaError.code === 4)) {
+    merged.hint = '音频格式不支持或文件缺失，请检查 Network 面板确认文件 404';
+  } else if (mediaError && mediaError.code === MediaError.MEDIA_ERR_NETWORK) {
+    merged.hint = '音频文件加载失败(网络错误)，请检查 Network 面板确认文件路径是否正确';
+  } else {
+    merged.hint = '请检查 DevTools Network 面板确认音频文件是否正常加载';
+  }
+
+  console.warn('[call-audio] Audio playback failed', merged);
+}
+
+function playAudioSegment(fileName: string, token: number): Promise<void> {
   if (typeof window === 'undefined' || typeof window.Audio === 'undefined') {
     console.warn('[call-audio] Audio playback is unavailable in this environment.');
     return Promise.resolve();
   }
 
-  return new Promise((resolve) => {
-    const audio = new window.Audio(src);
+  const audioUrl = getAudioUrl(fileName);
+
+  return new Promise((resolve, reject) => {
+    const audio = new window.Audio(audioUrl);
     let isSettled = false;
 
     function handleEnded() {
-      settle();
+      settle(true);
     }
 
     function handleError() {
-      console.warn(`[call-audio] Failed to load or play audio segment: ${src}`);
-      settle();
+      const mediaError = audio.error;
+      logPlaybackError(fileName, audioUrl, {
+        context: 'error event',
+        mediaErrorCode: mediaError?.code,
+        mediaErrorMessage: mediaError?.message || ''
+      });
+      settle(false);
     }
 
-    function settle() {
+    function settle(ok: boolean) {
       if (isSettled) {
         return;
       }
@@ -75,51 +111,71 @@ function playAudioSegment(src: string, token: number): Promise<void> {
         activeResolve = null;
       }
 
-      resolve();
+      if (ok) {
+        resolve();
+      } else {
+        reject(new Error(`Audio playback failed: ${fileName}`));
+      }
     }
 
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
     activeAudio = audio;
-    activeResolve = settle;
+    activeResolve = () => settle(false);
 
     try {
       const playResult = audio.play();
 
       if (playResult !== undefined) {
         playResult.catch((error: unknown) => {
-          console.warn(`[call-audio] Failed to play audio segment: ${src}`, error);
-          settle();
+          const errorName = error instanceof DOMException ? error.name : (error instanceof Error ? error.name : 'Unknown');
+          const errorMessage = error instanceof DOMException ? error.message : (error instanceof Error ? error.message : String(error));
+          logPlaybackError(fileName, audioUrl, {
+            context: 'play() rejected',
+            errorName,
+            errorMessage
+          });
+          settle(false);
         });
       }
     } catch (error) {
-      console.warn(`[call-audio] Failed to play audio segment: ${src}`, error);
-      settle();
+      const errorName = error instanceof DOMException ? error.name : (error instanceof Error ? error.name : 'Unknown');
+      const errorMessage = error instanceof DOMException ? error.message : (error instanceof Error ? error.message : String(error));
+      logPlaybackError(fileName, audioUrl, {
+        context: 'play() threw',
+        errorName,
+        errorMessage
+      });
+      settle(false);
     }
 
     if (token !== playbackToken) {
       audio.pause();
-      settle();
+      settle(false);
     }
   });
 }
 
-async function playAudioSources(sources: string[]): Promise<void> {
+async function playAudioSources(fileNames: string[]): Promise<void> {
   stopCallAudio();
 
   const token = ++playbackToken;
 
-  for (const source of sources) {
+  for (const fileName of fileNames) {
     if (token !== playbackToken) {
       return;
     }
 
-    await playAudioSegment(source, token);
+    try {
+      await playAudioSegment(fileName, token);
+    } catch {
+      // Continue to next segment even if one fails
+    }
   }
 }
 
 export async function playCallAudio(currentNo: number, nextNo?: number | null): Promise<void> {
-  await playAudioSources(buildCallAudioSources(currentNo, nextNo));
+  await playAudioSources(buildCallAudioFileNames(currentNo, nextNo));
 }
 
 export function stopCallAudio(): void {
@@ -141,10 +197,25 @@ export function stopCallAudio(): void {
   activeResolve = null;
 }
 
-export async function playTestAudio(): Promise<void> {
-  await playAudioSources([
-    buildCallAudioUrl('01_please.mp3'),
-    buildCallAudioUrl('num_1.mp3'),
-    buildCallAudioUrl('02_come.mp3')
-  ]);
+export async function playTestAudio(): Promise<boolean> {
+  const fileNames = ['01_please.mp3', 'num_1.mp3', '02_come.mp3'];
+
+  stopCallAudio();
+
+  const token = ++playbackToken;
+  let hasError = false;
+
+  for (const fileName of fileNames) {
+    if (token !== playbackToken) {
+      return false;
+    }
+
+    try {
+      await playAudioSegment(fileName, token);
+    } catch {
+      hasError = true;
+    }
+  }
+
+  return !hasError;
 }
