@@ -63,6 +63,7 @@ export interface ArchivedTask {
   id: string;
   roomId: string;
   roomCode: string;
+  taskName: string;
   roomTitle?: string;
   archivedAt: string;
   totalStudents: number;
@@ -347,6 +348,26 @@ function toNumberArray(value: unknown): number[] {
     .filter((item) => Number.isInteger(item) && item >= 1 && item <= CLASS_STUDENT_TOTAL);
 }
 
+function formatArchiveDate(value: string): string | null {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function buildDefaultArchiveTaskName(archivedAt: string): string {
+  const archiveDate = formatArchiveDate(archivedAt);
+  return archiveDate ? `${archiveDate} 背书任务` : '未命名背书任务';
+}
+
+function normalizeArchiveTaskName(taskName: string | undefined, archivedAt: string): string {
+  return taskName?.trim() || buildDefaultArchiveTaskName(archivedAt);
+}
+
 function toArchivedTask(raw: unknown): ArchivedTask | null {
   const [data] = getDataArray<Record<string, unknown>>(raw);
 
@@ -365,6 +386,10 @@ function toArchivedTask(raw: unknown): ArchivedTask | null {
     id,
     roomId: String(data.roomId ?? ''),
     roomCode,
+    taskName: normalizeArchiveTaskName(
+      typeof data.taskName === 'string' ? data.taskName : undefined,
+      String(data.archivedAt ?? '')
+    ),
     roomTitle: typeof data.roomTitle === 'string' ? data.roomTitle : undefined,
     archivedAt: String(data.archivedAt ?? ''),
     totalStudents: toNonNegativeInteger(data.totalStudents) || CLASS_STUDENT_TOTAL,
@@ -453,7 +478,13 @@ function getUnfinishedStudentNumbers(completedStudentNumbers: number[]): number[
   );
 }
 
-function buildArchivedTask(room: Room, snapshot: QueueSnapshot, archivedAt: string, id: string): ArchivedTask {
+function buildArchivedTask(
+  room: Room,
+  snapshot: QueueSnapshot,
+  archivedAt: string,
+  id: string,
+  taskName?: string
+): ArchivedTask {
   const completedStudentNumbers = getSortedCompletedStudentNumbers(snapshot.completedQueue);
   const unfinishedStudentNumbers = getUnfinishedStudentNumbers(completedStudentNumbers);
 
@@ -461,6 +492,7 @@ function buildArchivedTask(room: Room, snapshot: QueueSnapshot, archivedAt: stri
     id,
     roomId: room.id,
     roomCode: room.roomCode,
+    taskName: normalizeArchiveTaskName(taskName, archivedAt),
     roomTitle: room.title,
     archivedAt,
     totalStudents: CLASS_STUDENT_TOTAL,
@@ -1044,7 +1076,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return activeItems.length;
   }
 
-  async function archiveCurrentTask(sessionCode: string): Promise<ArchivedTask> {
+  async function archiveCurrentTask(sessionCode: string, taskName?: string): Promise<ArchivedTask> {
     const db = await getDb();
     const code = normalizeSessionCode(sessionCode);
     const room = requireRoom(await getRoom(code), code);
@@ -1056,7 +1088,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     }
 
     const timestamp = now();
-    const archivedTask = buildArchivedTask(room, snapshot, timestamp, archiveIdGenerator(room, timestamp));
+    const archivedTask = buildArchivedTask(room, snapshot, timestamp, archiveIdGenerator(room, timestamp), taskName);
 
     await db.collection(ARCHIVED_TASK_COLLECTION).doc(archivedTask.id).set({ ...archivedTask });
 

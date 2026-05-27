@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AppHero from '@/components/AppHero.vue';
@@ -29,6 +29,7 @@ import {
   verifyTeacherPin,
   watchQueue,
   archiveCurrentTask,
+  buildDefaultArchiveTaskName,
   listArchivedTasks,
   type ArchivedTask,
   type QueueItem,
@@ -123,6 +124,18 @@ function formatArchiveTime(value: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
     date.getMinutes()
   )}`;
+}
+
+function getArchiveTaskName(task: ArchivedTask): string {
+  return task.taskName?.trim() || buildDefaultArchiveTaskName(task.archivedAt);
+}
+
+function formatUnfinishedStudents(task: ArchivedTask): string {
+  if (task.unfinishedStudentNumbers.length === 0) {
+    return '无';
+  }
+
+  return task.unfinishedStudentNumbers.map((studentNo) => `${studentNo}号`).join('、');
 }
 
 function buildArchivedCompletionMatrix(task: ArchivedTask) {
@@ -379,22 +392,35 @@ async function handleArchiveCurrentTask() {
     return;
   }
 
+  let taskName = '';
+
   try {
-    await ElMessageBox.confirm(
-      '归档后，当前等待队列、当前叫号和已完成记录将被清空，用于开始下一轮背书任务。归档数据会保留，不会直接删除。',
+    const result = await ElMessageBox.prompt(
+      h('div', { class: 'archive-task-prompt' }, [
+        h('p', { class: 'archive-task-prompt__label' }, '任务名称'),
+        h(
+          'p',
+          { class: 'archive-task-prompt__description' },
+          '归档后，当前等待队列、当前叫号和已完成记录将被清空，用于开始下一轮背书任务。归档数据会保留，不会直接删除。'
+        )
+      ]),
       '确认归档当前任务？',
       {
         confirmButtonText: '确认归档',
         cancelButtonText: '取消',
+        inputPlaceholder: '例如：第 12 课背诵 / 古诗两首 / 5月27日早读背诵',
         type: 'warning'
       }
     );
+    taskName = result.value;
   } catch {
     return;
   }
 
   await runAction(async () => {
-    const archivedTask = await archiveCurrentTask(sessionCode.value);
+    const defaultTaskName = buildDefaultArchiveTaskName(new Date().toISOString());
+    const finalTaskName = taskName.trim() || defaultTaskName;
+    const archivedTask = await archiveCurrentTask(sessionCode.value, finalTaskName);
     archivedTasks.value = [archivedTask, ...archivedTasks.value.filter((task) => task.id !== archivedTask.id)];
     showNotice('success', `已归档当前任务，完成 ${archivedTask.completedCount} / ${CLASS_STUDENT_TOTAL} 人`);
   });
@@ -645,9 +671,7 @@ onBeforeUnmount(() => {
             <el-collapse-item v-for="task in archivedTasks" :key="task.id" :name="task.id">
               <template #title>
                 <div class="archive-record__title">
-                  <strong>{{ formatArchiveTime(task.archivedAt) }}</strong>
-                  <span>已完成 {{ task.completedCount }} / {{ task.totalStudents }}</span>
-                  <span>未完成 {{ task.unfinishedCount }} 人</span>
+                  <strong>{{ getArchiveTaskName(task) }} - {{ formatArchiveTime(task.archivedAt) }}</strong>
                 </div>
               </template>
 

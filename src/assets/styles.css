@@ -576,15 +576,13 @@ h2 {
 }
 
 .archive-history__collapse .el-collapse-item__header {
-  min-height: 72px;
+  min-height: 96px;
   padding: 8px 0;
 }
 
 .archive-record__title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+  display: grid;
+  gap: 4px;
   min-width: 0;
   color: #39473e;
   line-height: 1.35;
@@ -593,6 +591,13 @@ h2 {
 .archive-record__title strong {
   color: #16211b;
   font-size: 1rem;
+}
+
+.archive-record__title span {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .archive-record {
@@ -610,6 +615,23 @@ h2 {
 .archive-record__summary p {
   margin: 0;
   font-weight: 800;
+}
+
+.archive-task-prompt {
+  display: grid;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+.archive-task-prompt__label {
+  margin: 0;
+  color: #16211b;
+  font-weight: 800;
+}
+
+.archive-task-prompt__description {
+  margin: 0;
+  color: #5c6a61;
 }
 
 .completion-matrix--archive .completion-matrix__row {

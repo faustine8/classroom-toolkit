@@ -567,12 +567,13 @@ describe('cloudbaseService', () => {
     await service.markDone('A7K2', first._id);
     await service.callNext('A7K2');
 
-    const archived = await service.archiveCurrentTask('A7K2');
+    const archived = await service.archiveCurrentTask('A7K2', ' 第 12 课背诵 ');
 
     expect(archived).toMatchObject({
       id: 'archive-1',
       roomId: 'A7K2',
       roomCode: 'A7K2',
+      taskName: '第 12 课背诵',
       roomTitle: '课堂',
       totalStudents: 50,
       completedCount: 1,
@@ -585,6 +586,7 @@ describe('cloudbaseService', () => {
     expect(archived.unfinishedStudentNumbers).not.toContain(7);
     await expect(db.collection('archivedTasks').doc('archive-1').get()).resolves.toMatchObject({
       data: expect.objectContaining({
+        taskName: '第 12 课背诵',
         completedStudentNumbers: [7],
         unfinishedCount: 49
       })
@@ -623,7 +625,7 @@ describe('cloudbaseService', () => {
     const secondArchive = await service.archiveCurrentTask('A7K2');
     const archiveRecords = await db.collection('archivedTasks').where({ roomCode: 'A7K2' }).get();
 
-    expect(secondArchive).toMatchObject({ id: 'archive-2', completedCount: 0 });
+    expect(secondArchive).toMatchObject({ id: 'archive-2', taskName: '2026-05-21 背书任务', completedCount: 0 });
     expect(archiveRecords.data.map((item) => item._id).sort()).toEqual(['archive-1', 'archive-2']);
   });
 
@@ -666,6 +668,7 @@ describe('cloudbaseService', () => {
       id: 'new-record',
       roomId: 'A7K2',
       roomCode: 'A7K2',
+      taskName: '古诗两首',
       archivedAt: '2026-05-21T00:02:00.000Z',
       totalStudents: 50,
       completedCount: 2,
@@ -675,8 +678,20 @@ describe('cloudbaseService', () => {
     });
 
     await expect(service.listArchivedTasks('a7k2')).resolves.toMatchObject([
-      { id: 'new-record', roomCode: 'A7K2', completedCount: 2, unfinishedStudentNumbers: [1, 2] },
-      { id: 'old-record', roomCode: 'A7K2', completedCount: 1, unfinishedStudentNumbers: [1, 2, 3] }
+      {
+        id: 'new-record',
+        roomCode: 'A7K2',
+        taskName: '古诗两首',
+        completedCount: 2,
+        unfinishedStudentNumbers: [1, 2]
+      },
+      {
+        id: 'old-record',
+        roomCode: 'A7K2',
+        taskName: '2026-05-21 背书任务',
+        completedCount: 1,
+        unfinishedStudentNumbers: [1, 2, 3]
+      }
     ]);
   });
 });
