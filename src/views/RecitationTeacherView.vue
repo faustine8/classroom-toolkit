@@ -429,19 +429,19 @@ onBeforeUnmount(() => {
           <div class="card-header card-header--split">
             <h2>当前叫号状态</h2>
             <el-tag :type="currentStudentNo ? 'success' : 'info'" effect="light">
-              {{ currentStudentNo ? '进行中' : '等待叫号' }}
+              {{ currentStudentNo ? '进行中' : '暂无' }}
             </el-tag>
           </div>
         </template>
 
         <el-row class="status-grid" :gutter="16">
-          <el-col :xs="24" :md="10">
+          <el-col :xs="24" :md="12">
             <div class="metric-panel metric-panel--large" aria-live="polite">
               <span>当前正在背书</span>
-              <strong>{{ currentStudentNo ?? '等待叫号' }}</strong>
+              <strong>{{ currentStudentNo ?? '暂无' }}</strong>
             </div>
           </el-col>
-          <el-col :xs="24" :md="14">
+          <el-col :xs="24" :md="12">
             <div class="teacher-actions" role="group" aria-label="当前叫号操作">
               <div class="teacher-actions__main">
                 <el-button
@@ -509,7 +509,7 @@ onBeforeUnmount(() => {
       <el-card class="section-card completion-matrix-card" shadow="never">
         <template #header>
           <div class="card-header card-header--split">
-            <h2>全班完成情况</h2>
+            <h2>任务完成情况</h2>
             <div class="completion-summary" aria-label="完成统计">
               <el-tag type="success" effect="plain">已完成 {{ completedStudentCount }} / {{ CLASS_STUDENT_TOTAL }}</el-tag>
               <el-tag type="danger" effect="plain">未完成 {{ incompleteStudentCount }}</el-tag>

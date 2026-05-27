@@ -524,11 +524,11 @@ h2 {
 }
 
 .completion-legend__swatch--done {
-  background: #1f8f55;
+  background: var(--el-color-success);
 }
 
 .completion-legend__swatch--pending {
-  background: #d33f32;
+  background: var(--el-color-danger);
 }
 
 .completion-matrix {
@@ -558,13 +558,13 @@ h2 {
 }
 
 .completion-matrix__cell--done {
-  border-color: #176c42;
-  background: #1f8f55;
+  border-color: var(--el-color-success-light-3);
+  background: var(--el-color-success);
 }
 
 .completion-matrix__cell--pending {
-  border-color: #a92f26;
-  background: #d33f32;
+  border-color: var(--el-color-danger-light-3);
+  background: var(--el-color-danger);
 }
 
 @media (max-width: 720px) {
