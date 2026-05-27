@@ -644,6 +644,32 @@ h2 {
   font-size: 1rem;
 }
 
+.completion-matrix--archive .completion-matrix__cell--pending {
+  cursor: pointer;
+}
+
+.completion-matrix--archive .completion-matrix__cell--supplement {
+  position: relative;
+}
+
+.completion-matrix--archive .completion-matrix__cell--supplement::after {
+  content: '补';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 3px;
+  border-radius: 9px;
+  background: var(--el-color-warning);
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 @media (max-width: 720px) {
   .teacher-actions__danger-zone {
     padding-left: 0;

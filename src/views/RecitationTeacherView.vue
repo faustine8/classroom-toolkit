@@ -31,6 +31,7 @@ import {
   archiveCurrentTask,
   buildDefaultArchiveTaskName,
   listArchivedTasks,
+  supplementArchiveTaskCompletion,
   type ArchivedTask,
   type QueueItem,
   type QueueStatus,
@@ -139,7 +140,15 @@ function formatUnfinishedStudents(task: ArchivedTask): string {
 }
 
 function buildArchivedCompletionMatrix(task: ArchivedTask) {
-  return buildCompletionMatrix(new Set(task.completedStudentNumbers));
+  const supplementNumbers = (task.supplementCompletedRecords || []).map((r) => Number(r.studentNumber));
+  const allCompleted = new Set([...task.completedStudentNumbers.map(Number), ...supplementNumbers]);
+  return buildCompletionMatrix(allCompleted);
+}
+
+function isSupplementCompleted(task: ArchivedTask, studentNo: number): boolean {
+  return (task.supplementCompletedRecords || []).some(
+    (record) => Number(record.studentNumber) === Number(studentNo)
+  );
 }
 
 function getQueueStatusText(status: QueueStatus): string {
@@ -447,6 +456,37 @@ async function handleOpenArchiveHistory() {
   await loadArchiveHistory();
 }
 
+async function handleSupplementComplete(task: ArchivedTask, studentNo: number) {
+  try {
+    await ElMessageBox.confirm(
+      `确认将 ${studentNo}号 标记为该任务已完成吗？`,
+      '确认补标完成？',
+      {
+        confirmButtonText: '确认完成',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+  } catch {
+    return;
+  }
+
+  await runAction(async () => {
+    const updatedTask = await supplementArchiveTaskCompletion(
+      sessionCode.value,
+      task.id,
+      studentNo
+    );
+
+    const index = archivedTasks.value.findIndex((t) => t.id === task.id);
+    if (index !== -1) {
+      archivedTasks.value[index] = updatedTask;
+    }
+
+    showNotice('success', `已将 ${studentNo}号 标记为完成`);
+  });
+}
+
 onMounted(async () => {
   const rememberedTeacherPin = getRememberedTeacherPin(sessionCode.value);
 
@@ -692,8 +732,11 @@ onBeforeUnmount(() => {
                       class="completion-matrix__cell"
                       :class="{
                         'completion-matrix__cell--done': student.isCompleted,
-                        'completion-matrix__cell--pending': !student.isCompleted
+                        'completion-matrix__cell--pending': !student.isCompleted,
+                        'completion-matrix__cell--supplement': student.isCompleted && isSupplementCompleted(task, student.studentNo)
                       }"
+                      :title="!student.isCompleted ? '点击补标完成' : ''"
+                      @click="!student.isCompleted && handleSupplementComplete(task, student.studentNo)"
                     >
                       {{ student.label }}
                     </span>

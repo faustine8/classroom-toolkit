@@ -59,6 +59,11 @@ export interface QueueSnapshot {
   activeItems: QueueItem[];
 }
 
+export interface SupplementCompletedRecord {
+  studentNumber: number;
+  completedAt: string;
+}
+
 export interface ArchivedTask {
   id: string;
   roomId: string;
@@ -74,6 +79,7 @@ export interface ArchivedTask {
   completedRecords: QueueItem[];
   waitingQueueSnapshot: QueueItem[];
   currentCallingSnapshot: QueueItem | null;
+  supplementCompletedRecords?: SupplementCompletedRecord[];
 }
 
 interface CloudBaseAppLike {
@@ -348,6 +354,25 @@ function toNumberArray(value: unknown): number[] {
     .filter((item) => Number.isInteger(item) && item >= 1 && item <= CLASS_STUDENT_TOTAL);
 }
 
+function toSupplementCompletedRecords(value: unknown): SupplementCompletedRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const studentNo = Number(record.studentNumber ?? record.studentNo);
+      if (!Number.isInteger(studentNo) || studentNo < 1 || studentNo > CLASS_STUDENT_TOTAL) return null;
+      return {
+        studentNumber: studentNo,
+        completedAt: String(record.completedAt ?? '')
+      };
+    })
+    .filter((item): item is SupplementCompletedRecord => item !== null);
+}
+
 function formatArchiveDate(value: string): string | null {
   const date = new Date(value);
 
@@ -399,7 +424,8 @@ function toArchivedTask(raw: unknown): ArchivedTask | null {
     unfinishedStudentNumbers: toNumberArray(data.unfinishedStudentNumbers),
     completedRecords: toQueueItems(data.completedRecords, String(data.roomId ?? '')),
     waitingQueueSnapshot: toQueueItems(data.waitingQueueSnapshot, String(data.roomId ?? '')),
-    currentCallingSnapshot: toQueueItem(data.currentCallingSnapshot, String(data.roomId ?? ''))
+    currentCallingSnapshot: toQueueItem(data.currentCallingSnapshot, String(data.roomId ?? '')),
+    supplementCompletedRecords: toSupplementCompletedRecords(data.supplementCompletedRecords)
   };
 }
 
@@ -1125,6 +1151,70 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
       .filter((item): item is ArchivedTask => item !== null);
   }
 
+  async function supplementArchiveTaskCompletion(
+    sessionCode: string,
+    archiveId: string,
+    studentNumber: number
+  ): Promise<ArchivedTask> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+
+    const result = await db.collection(ARCHIVED_TASK_COLLECTION).doc(archiveId).get();
+    const archivedTask = toArchivedTask(result.data);
+
+    if (!archivedTask) {
+      throw new Error('未找到该归档记录');
+    }
+
+    if (archivedTask.roomCode !== code) {
+      throw new Error('归档记录不属于当前房间');
+    }
+
+    const supplementRecords = archivedTask.supplementCompletedRecords || [];
+    const allCompleted = new Set([
+      ...archivedTask.completedStudentNumbers,
+      ...supplementRecords.map((r) => r.studentNumber)
+    ]);
+
+    if (allCompleted.has(studentNumber)) {
+      throw new Error('该学生已完成，无法重复补标');
+    }
+
+    const unfinishedNumbers = archivedTask.unfinishedStudentNumbers;
+    if (!unfinishedNumbers.includes(studentNumber)) {
+      throw new Error('该学生不在未完成列表中');
+    }
+
+    const timestamp = now();
+    const newRecord: SupplementCompletedRecord = {
+      studentNumber,
+      completedAt: timestamp
+    };
+
+    const updatedSupplementRecords = [...supplementRecords, newRecord];
+    const updatedCompletedNumbers = [...archivedTask.completedStudentNumbers, studentNumber].sort((a, b) => a - b);
+    const updatedUnfinishedNumbers = unfinishedNumbers
+      .filter((n) => n !== studentNumber)
+      .sort((a, b) => a - b);
+
+    await db.collection(ARCHIVED_TASK_COLLECTION).doc(archiveId).update({
+      completedStudentNumbers: updatedCompletedNumbers,
+      unfinishedStudentNumbers: updatedUnfinishedNumbers,
+      completedCount: updatedCompletedNumbers.length,
+      unfinishedCount: updatedUnfinishedNumbers.length,
+      supplementCompletedRecords: updatedSupplementRecords
+    });
+
+    return {
+      ...archivedTask,
+      completedStudentNumbers: updatedCompletedNumbers,
+      unfinishedStudentNumbers: updatedUnfinishedNumbers,
+      completedCount: updatedCompletedNumbers.length,
+      unfinishedCount: updatedUnfinishedNumbers.length,
+      supplementCompletedRecords: updatedSupplementRecords
+    };
+  }
+
   async function watchQueue(
     sessionCode: string,
     callback: (snapshot: QueueSnapshot) => void,
@@ -1204,7 +1294,8 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     removeQueueItem,
     clearQueue,
     archiveCurrentTask,
-    listArchivedTasks
+    listArchivedTasks,
+    supplementArchiveTaskCompletion
   };
 }
 
@@ -1228,3 +1319,4 @@ export const removeQueueItem = defaultService.removeQueueItem;
 export const clearQueue = defaultService.clearQueue;
 export const archiveCurrentTask = defaultService.archiveCurrentTask;
 export const listArchivedTasks = defaultService.listArchivedTasks;
+export const supplementArchiveTaskCompletion = defaultService.supplementArchiveTaskCompletion;
