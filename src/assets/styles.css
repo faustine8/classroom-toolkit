@@ -493,6 +493,80 @@ h2 {
   margin-left: 0;
 }
 
+.completion-matrix-card .el-card__body {
+  display: grid;
+  gap: 16px;
+}
+
+.completion-summary,
+.completion-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.completion-legend {
+  color: #425047;
+  font-weight: 800;
+}
+
+.completion-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.completion-legend__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.completion-legend__swatch--done {
+  background: #1f8f55;
+}
+
+.completion-legend__swatch--pending {
+  background: #d33f32;
+}
+
+.completion-matrix {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.completion-matrix__row {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(72px, 1fr));
+  gap: 8px;
+  min-width: 792px;
+}
+
+.completion-matrix__cell {
+  display: grid;
+  place-items: center;
+  min-height: 54px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 1.2rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.completion-matrix__cell--done {
+  border-color: #176c42;
+  background: #1f8f55;
+}
+
+.completion-matrix__cell--pending {
+  border-color: #a92f26;
+  background: #d33f32;
+}
+
 @media (max-width: 720px) {
   .teacher-actions__danger-zone {
     padding-left: 0;

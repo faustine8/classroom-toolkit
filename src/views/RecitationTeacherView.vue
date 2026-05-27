@@ -3,6 +3,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import AppHero from '@/components/AppHero.vue';
+import {
+  buildCompletionMatrix,
+  CLASS_STUDENT_TOTAL,
+  getCompletedStudentNumbers
+} from '@/features/recitation/completionMatrix';
 import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import {
   getRememberedTeacherPin,
@@ -49,6 +54,10 @@ const roomTitle = computed(() => formatRoomTitle(room.value ?? currentRoom));
 const currentStudentNo = computed(() => current.value?.studentNo ?? room.value?.currentStudentNo ?? null);
 const studentJoinCode = computed(() => room.value?.studentJoinCode ?? '');
 const joinStatusText = computed(() => (room.value?.joinEnabled ? '排队已开放' : '排队未开放'));
+const completedStudentNumbers = computed(() => getCompletedStudentNumbers(completedQueue.value));
+const completedStudentCount = computed(() => completedStudentNumbers.value.size);
+const incompleteStudentCount = computed(() => CLASS_STUDENT_TOTAL - completedStudentCount.value);
+const matrixStudents = computed(() => buildCompletionMatrix(completedStudentNumbers.value));
 
 function showNotice(kind: NoticeKind, text: string) {
   notice.value = { kind, text };
@@ -495,6 +504,39 @@ onBeforeUnmount(() => {
             </div>
           </el-col>
         </el-row>
+      </el-card>
+
+      <el-card class="section-card completion-matrix-card" shadow="never">
+        <template #header>
+          <div class="card-header card-header--split">
+            <h2>全班完成情况</h2>
+            <div class="completion-summary" aria-label="完成统计">
+              <el-tag type="success" effect="plain">已完成 {{ completedStudentCount }} / {{ CLASS_STUDENT_TOTAL }}</el-tag>
+              <el-tag type="danger" effect="plain">未完成 {{ incompleteStudentCount }}</el-tag>
+            </div>
+          </div>
+        </template>
+
+        <div class="completion-legend" aria-label="图例">
+          <span><i class="completion-legend__swatch completion-legend__swatch--done"></i>已完成</span>
+          <span><i class="completion-legend__swatch completion-legend__swatch--pending"></i>未完成</span>
+        </div>
+
+        <div class="completion-matrix" aria-label="1到50号学生背书完成情况">
+          <div v-for="(row, rowIndex) in matrixStudents" :key="rowIndex" class="completion-matrix__row">
+            <span
+              v-for="student in row"
+              :key="student.studentNo"
+              class="completion-matrix__cell"
+              :class="{
+                'completion-matrix__cell--done': student.isCompleted,
+                'completion-matrix__cell--pending': !student.isCompleted
+              }"
+            >
+              {{ student.label }}
+            </span>
+          </div>
+        </div>
       </el-card>
 
       <el-card class="section-card" shadow="never">
