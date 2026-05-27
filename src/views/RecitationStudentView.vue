@@ -14,7 +14,7 @@ import {
   type QueueItem,
   type Room
 } from '@/services/cloudbaseService';
-import { playCallAudio, playTestAudio, stopCallAudio } from '@/utils/callAudioPlayer';
+import { playCallAudio, playTestAudio, preloadCommonAudio, stopCallAudio } from '@/utils/callAudioPlayer';
 import { getErrorMessage } from '@/utils/errorMessage';
 
 type NoticeKind = 'success' | 'warning' | 'info' | 'error';
@@ -184,6 +184,7 @@ function handleVoiceEnabledChange() {
   lastHandledAnnounceVersion.value = announceVersion.value;
 
   if (voiceEnabled.value) {
+    preloadCommonAudio();
     showNotice('success', '语音播报已开启，可点击测试声音确认浏览器已允许播放');
   } else {
     stopCallAudio();
@@ -192,6 +193,7 @@ function handleVoiceEnabledChange() {
 }
 
 async function handleTestAudio() {
+  preloadCommonAudio();
   const ok = await playTestAudio();
   if (ok) {
     showNotice('success', '测试声音播放成功');
