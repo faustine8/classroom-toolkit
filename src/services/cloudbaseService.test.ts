@@ -163,7 +163,8 @@ function createFakeService() {
       .mockReturnValue('2026-05-21T00:03:00.000Z'),
     codeGenerator: vi.fn().mockReturnValue('A7K2'),
     teacherPinGenerator: vi.fn().mockReturnValue('1357'),
-    studentJoinCodeGenerator: vi.fn().mockReturnValueOnce('K8P3XQ7A').mockReturnValue('M9R4TQ8B')
+    studentJoinCodeGenerator: vi.fn().mockReturnValueOnce('K8P3XQ7A').mockReturnValue('M9R4TQ8B'),
+    archiveIdGenerator: vi.fn().mockReturnValueOnce('archive-1').mockReturnValue('archive-2')
   });
 
   return { db, service };
@@ -554,5 +555,85 @@ describe('cloudbaseService', () => {
       waiting: [expect.objectContaining({ studentNo: '8', status: 'waiting' })],
       completedQueue: [expect.objectContaining({ studentNo: '7', status: 'done' })]
     });
+  });
+
+  it('archives current task snapshots and clears all task records without replacing older archives', async () => {
+    const { db, service } = createFakeService();
+    await createOpenRoom(service);
+    const first = await service.joinQueue('A7K2', '7');
+    await service.joinQueue('A7K2', '8');
+    await service.joinQueue('A7K2', '9');
+    await service.callNext('A7K2');
+    await service.markDone('A7K2', first._id);
+    await service.callNext('A7K2');
+
+    const archived = await service.archiveCurrentTask('A7K2');
+
+    expect(archived).toMatchObject({
+      id: 'archive-1',
+      roomId: 'A7K2',
+      roomCode: 'A7K2',
+      roomTitle: '课堂',
+      totalStudents: 50,
+      completedCount: 1,
+      unfinishedCount: 49,
+      completedStudentNumbers: [7],
+      currentCallingSnapshot: expect.objectContaining({ studentNo: '8', status: 'current' }),
+      waitingQueueSnapshot: [expect.objectContaining({ studentNo: '9', status: 'waiting' })],
+      completedRecords: [expect.objectContaining({ studentNo: '7', status: 'done' })]
+    });
+    expect(archived.unfinishedStudentNumbers).not.toContain(7);
+    await expect(db.collection('archivedTasks').doc('archive-1').get()).resolves.toMatchObject({
+      data: expect.objectContaining({
+        completedStudentNumbers: [7],
+        unfinishedCount: 49
+      })
+    });
+
+    const clearedItems = await db.collection('queueItems').where({ roomCode: 'A7K2' }).get();
+    expect(clearedItems.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ studentNo: '7', status: 'removed' }),
+        expect.objectContaining({ studentNo: '8', status: 'removed' }),
+        expect.objectContaining({ studentNo: '9', status: 'removed' })
+      ])
+    );
+    await expect(db.collection('rooms').doc('A7K2').get()).resolves.toMatchObject({
+      data: expect.objectContaining({
+        currentStudentNo: null,
+        joinEnabled: false,
+        teacherPin: '1357',
+        title: '课堂'
+      })
+    });
+
+    const snapshots: QueueSnapshot[] = [];
+    const stopWatching = await service.watchQueue('A7K2', (snapshot) => {
+      snapshots.push(snapshot);
+    });
+    stopWatching();
+    expect(snapshots[0]).toMatchObject({
+      current: null,
+      waiting: [],
+      completedQueue: []
+    });
+
+    await service.enableStudentJoin('A7K2');
+    await service.joinQueue('A7K2', '7');
+    const secondArchive = await service.archiveCurrentTask('A7K2');
+    const archiveRecords = await db.collection('archivedTasks').where({ roomCode: 'A7K2' }).get();
+
+    expect(secondArchive).toMatchObject({ id: 'archive-2', completedCount: 0 });
+    expect(archiveRecords.data.map((item) => item._id).sort()).toEqual(['archive-1', 'archive-2']);
+  });
+
+  it('rejects archiving when there is no task data', async () => {
+    const { db, service } = createFakeService();
+    await createOpenRoom(service);
+
+    await expect(service.archiveCurrentTask('A7K2')).rejects.toThrow('当前没有可归档的任务');
+
+    const archiveRecords = await db.collection('archivedTasks').where({ roomCode: 'A7K2' }).get();
+    expect(archiveRecords.data).toEqual([]);
   });
 });

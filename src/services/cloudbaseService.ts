@@ -4,6 +4,7 @@ import {
   STUDENT_NO_VALIDATION_MESSAGE,
   normalizeStudentNo
 } from '@/features/recitation/sessionLogic';
+import { CLASS_STUDENT_TOTAL } from '@/features/recitation/completionMatrix';
 import { defaultRoom, formatRoomTitle } from '@/features/recitation/room';
 
 export type QueueStatus = 'waiting' | 'current' | 'done' | 'removed';
@@ -58,6 +59,22 @@ export interface QueueSnapshot {
   activeItems: QueueItem[];
 }
 
+export interface ArchivedTask {
+  id: string;
+  roomId: string;
+  roomCode: string;
+  roomTitle?: string;
+  archivedAt: string;
+  totalStudents: number;
+  completedCount: number;
+  unfinishedCount: number;
+  completedStudentNumbers: number[];
+  unfinishedStudentNumbers: number[];
+  completedRecords: QueueItem[];
+  waitingQueueSnapshot: QueueItem[];
+  currentCallingSnapshot: QueueItem | null;
+}
+
 interface CloudBaseAppLike {
   database: () => CloudBaseDbLike;
 }
@@ -99,10 +116,12 @@ export interface CreateCloudBaseServiceOptions {
   codeGenerator?: () => string;
   teacherPinGenerator?: () => string;
   studentJoinCodeGenerator?: () => string;
+  archiveIdGenerator?: (room: Room, archivedAt: string) => string;
 }
 
 const ROOM_COLLECTION = 'rooms';
 const QUEUE_COLLECTION = 'queueItems';
+const ARCHIVED_TASK_COLLECTION = 'archivedTasks';
 const ACTIVE_STATUSES: QueueStatus[] = ['waiting', 'current'];
 const SNAPSHOT_STATUSES: QueueStatus[] = ['waiting', 'current', 'done'];
 const SESSION_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -149,6 +168,12 @@ function defaultStudentJoinCodeGenerator(): string {
   }
 
   return code;
+}
+
+function defaultArchiveIdGenerator(room: Room, archivedAt: string): string {
+  const timestamp = archivedAt.replace(/[^0-9]/g, '');
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `${room.id}_${timestamp}_${suffix}`;
 }
 
 function getDataArray<T>(data: unknown): T[] {
@@ -365,6 +390,49 @@ function buildQueueSnapshot(room: Room, items: QueueItem[]): QueueSnapshot {
   };
 }
 
+function getSortedCompletedStudentNumbers(completedRecords: QueueItem[]): number[] {
+  const completedNumbers = new Set<number>();
+
+  for (const item of completedRecords) {
+    const studentNo = normalizeStudentNo(item.studentNo);
+
+    if (studentNo !== null) {
+      completedNumbers.add(Number(studentNo));
+    }
+  }
+
+  return [...completedNumbers].sort((left, right) => left - right);
+}
+
+function getUnfinishedStudentNumbers(completedStudentNumbers: number[]): number[] {
+  const completedSet = new Set(completedStudentNumbers);
+
+  return Array.from({ length: CLASS_STUDENT_TOTAL }, (_, index) => index + 1).filter(
+    (studentNo) => !completedSet.has(studentNo)
+  );
+}
+
+function buildArchivedTask(room: Room, snapshot: QueueSnapshot, archivedAt: string, id: string): ArchivedTask {
+  const completedStudentNumbers = getSortedCompletedStudentNumbers(snapshot.completedQueue);
+  const unfinishedStudentNumbers = getUnfinishedStudentNumbers(completedStudentNumbers);
+
+  return {
+    id,
+    roomId: room.id,
+    roomCode: room.roomCode,
+    roomTitle: room.title,
+    archivedAt,
+    totalStudents: CLASS_STUDENT_TOTAL,
+    completedCount: completedStudentNumbers.length,
+    unfinishedCount: unfinishedStudentNumbers.length,
+    completedStudentNumbers,
+    unfinishedStudentNumbers,
+    completedRecords: snapshot.completedQueue.map((item) => ({ ...item })),
+    waitingQueueSnapshot: snapshot.waiting.map((item) => ({ ...item })),
+    currentCallingSnapshot: snapshot.current ? { ...snapshot.current } : null
+  };
+}
+
 export function normalizeSessionCode(value: string): string {
   return value.trim().toUpperCase();
 }
@@ -379,6 +447,7 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
   const codeGenerator = options.codeGenerator ?? defaultCodeGenerator;
   const teacherPinGenerator = options.teacherPinGenerator ?? defaultTeacherPinGenerator;
   const studentJoinCodeGenerator = options.studentJoinCodeGenerator ?? defaultStudentJoinCodeGenerator;
+  const archiveIdGenerator = options.archiveIdGenerator ?? defaultArchiveIdGenerator;
   const initApp =
     options.initApp ??
     ((config: { env: string; accessKey: string }) => cloudbase.init(config) as unknown as CloudBaseAppLike);
@@ -934,6 +1003,41 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     return activeItems.length;
   }
 
+  async function archiveCurrentTask(sessionCode: string): Promise<ArchivedTask> {
+    const db = await getDb();
+    const code = normalizeSessionCode(sessionCode);
+    const room = requireRoom(await getRoom(code), code);
+    const snapshot = buildQueueSnapshot(room, await getSnapshotItems(room));
+    const taskItems = [...snapshot.waiting, ...snapshot.completedQueue, ...(snapshot.current ? [snapshot.current] : [])];
+
+    if (taskItems.length === 0) {
+      throw new Error('当前没有可归档的任务');
+    }
+
+    const timestamp = now();
+    const archivedTask = buildArchivedTask(room, snapshot, timestamp, archiveIdGenerator(room, timestamp));
+
+    await db.collection(ARCHIVED_TASK_COLLECTION).doc(archivedTask.id).set({ ...archivedTask });
+
+    await Promise.all(
+      taskItems.map((item) =>
+        db.collection(QUEUE_COLLECTION).doc(item._id).update({
+          roomId: room.id,
+          status: 'removed',
+          updatedAt: timestamp
+        })
+      )
+    );
+
+    await db.collection(ROOM_COLLECTION).doc(code).update({
+      currentStudentNo: null,
+      joinEnabled: false,
+      updatedAt: timestamp
+    });
+
+    return archivedTask;
+  }
+
   async function watchQueue(
     sessionCode: string,
     callback: (snapshot: QueueSnapshot) => void,
@@ -1011,7 +1115,8 @@ export function createCloudBaseService(options: CreateCloudBaseServiceOptions = 
     markDone,
     repeatCall,
     removeQueueItem,
-    clearQueue
+    clearQueue,
+    archiveCurrentTask
   };
 }
 
@@ -1033,3 +1138,4 @@ export const markDone = defaultService.markDone;
 export const repeatCall = defaultService.repeatCall;
 export const removeQueueItem = defaultService.removeQueueItem;
 export const clearQueue = defaultService.clearQueue;
+export const archiveCurrentTask = defaultService.archiveCurrentTask;

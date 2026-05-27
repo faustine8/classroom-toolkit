@@ -39,8 +39,9 @@ VITE_CLOUDBASE_PUBLISHABLE_KEY=xxx
 
 1. 创建或选择一个 CloudBase 环境。
 2. 在「API Key 配置」中生成客户端 Publishable Key，填入 `.env` 的 `VITE_CLOUDBASE_PUBLISHABLE_KEY`。
-3. 在文档型数据库中创建两个集合：`rooms`、`queueItems`。
+3. 在文档型数据库中创建三个集合：`rooms`、`queueItems`、`archivedTasks`。
 4. 建议给 `queueItems` 创建索引：`roomCode`、`status`、`createdAt`，用于等待队列查询和排序。
+5. 建议给 `archivedTasks` 创建索引：`roomCode`、`archivedAt`，用于后续归档列表查询。
 
 `rooms` 字段：
 
@@ -61,6 +62,24 @@ studentNo
 status: waiting | current | done | removed
 createdAt
 updatedAt
+```
+
+`archivedTasks` 字段：
+
+```text
+id
+roomId
+roomCode
+roomTitle
+archivedAt
+totalStudents
+completedCount
+unfinishedCount
+completedStudentNumbers
+unfinishedStudentNumbers
+completedRecords
+waitingQueueSnapshot
+currentCallingSnapshot
 ```
 
 本项目使用 `@cloudbase/js-sdk` `3.3.10`，初始化时把客户端 Publishable Key 传给 `accessKey`：
@@ -94,6 +113,17 @@ Publishable Key 模式下的最小可用安全规则如下。它不是强权限�
   "read": true,
   "create": "doc.roomCode != null && doc.studentNo != null && doc.status == 'waiting'",
   "update": "doc.roomCode != null && doc.studentNo != null && doc.status in ['waiting', 'current', 'done', 'removed']",
+  "delete": false
+}
+```
+
+`archivedTasks`：
+
+```json
+{
+  "read": true,
+  "create": "doc.roomCode != null && doc.archivedAt != null",
+  "update": false,
   "delete": false
 }
 ```

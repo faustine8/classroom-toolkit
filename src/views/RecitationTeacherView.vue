@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import AppHero from '@/components/AppHero.vue';
 import {
   buildCompletionMatrix,
@@ -28,6 +28,7 @@ import {
   repeatCall,
   verifyTeacherPin,
   watchQueue,
+  archiveCurrentTask,
   type QueueItem,
   type QueueStatus,
   type Room
@@ -58,6 +59,9 @@ const completedStudentNumbers = computed(() => getCompletedStudentNumbers(comple
 const completedStudentCount = computed(() => completedStudentNumbers.value.size);
 const incompleteStudentCount = computed(() => CLASS_STUDENT_TOTAL - completedStudentCount.value);
 const matrixStudents = computed(() => buildCompletionMatrix(completedStudentNumbers.value));
+const hasArchivableTaskData = computed(
+  () => waiting.value.length > 0 || completedQueue.value.length > 0 || current.value !== null || currentStudentNo.value !== null
+);
 
 function showNotice(kind: NoticeKind, text: string) {
   notice.value = { kind, text };
@@ -341,6 +345,32 @@ async function handleClearQueue() {
   });
 }
 
+async function handleArchiveCurrentTask() {
+  if (!hasArchivableTaskData.value) {
+    showNotice('warning', '当前没有可归档的任务');
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '归档后，当前等待队列、当前叫号和已完成记录将被清空，用于开始下一轮背书任务。归档数据会保留，不会直接删除。',
+      '确认归档当前任务？',
+      {
+        confirmButtonText: '确认归档',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+  } catch {
+    return;
+  }
+
+  await runAction(async () => {
+    const archivedTask = await archiveCurrentTask(sessionCode.value);
+    showNotice('success', `已归档当前任务，完成 ${archivedTask.completedCount} / ${CLASS_STUDENT_TOTAL} 人`);
+  });
+}
+
 onMounted(async () => {
   const rememberedTeacherPin = getRememberedTeacherPin(sessionCode.value);
 
@@ -513,6 +543,14 @@ onBeforeUnmount(() => {
             <div class="completion-summary" aria-label="完成统计">
               <el-tag type="success" effect="plain">已完成 {{ completedStudentCount }} / {{ CLASS_STUDENT_TOTAL }}</el-tag>
               <el-tag type="danger" effect="plain">未完成 {{ incompleteStudentCount }}</el-tag>
+              <el-button
+                type="warning"
+                :disabled="isBusy || !hasArchivableTaskData"
+                :loading="isBusy"
+                @click="handleArchiveCurrentTask"
+              >
+                归档当前任务
+              </el-button>
             </div>
           </div>
         </template>
