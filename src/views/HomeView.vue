@@ -193,7 +193,7 @@ async function enterStudentRoom() {
     <AppHero
       eyebrow="Classroom Toolkit"
       title="班级背诵排号系统"
-      subtitle="固定房间保存班级、科目、房间码和 PIN，老师端和学生端通过 CloudBase 实时同步队列。"
+      subtitle="固定房间保存班级、科目、房间码和 PIN，老师端和学生端实时同步。"
     />
 
     <section class="room-entry-grid" aria-label="背书排号房间入口">
