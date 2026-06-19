@@ -1,13 +1,15 @@
-import { normalizeSessionCode } from '@/services/cloudbaseService';
-
 const TEACHER_PIN_STORAGE_PREFIX = 'classroom-toolkit:teacher-pin:';
 
 function canUseSessionStorage(): boolean {
   return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
 }
 
+function normalizeTeacherSessionCode(value: string): string {
+  return value.trim().toUpperCase();
+}
+
 function getStorageKey(sessionCode: string): string {
-  return `${TEACHER_PIN_STORAGE_PREFIX}${normalizeSessionCode(sessionCode)}`;
+  return `${TEACHER_PIN_STORAGE_PREFIX}${normalizeTeacherSessionCode(sessionCode)}`;
 }
 
 export function normalizeTeacherPin(value: string): string {

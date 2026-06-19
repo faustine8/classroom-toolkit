@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import HomeView from '@/views/HomeView.vue';
+import ExamCountdownManageView from '@/views/ExamCountdownManageView.vue';
+import ExamCountdownStartView from '@/views/ExamCountdownStartView.vue';
 import RecitationStudentView from '@/views/RecitationStudentView.vue';
 import RecitationTeacherView from '@/views/RecitationTeacherView.vue';
 import StudentEntryView from '@/views/StudentEntryView.vue';
@@ -16,6 +18,23 @@ export const router = createRouter({
       path: '/recitation',
       name: 'recitation-create',
       redirect: { name: 'home' }
+    },
+    {
+      path: '/exam-countdown',
+      name: 'exam-countdown',
+      redirect: { name: 'exam-countdown-start' }
+    },
+    {
+      path: '/exam-countdown/start',
+      name: 'exam-countdown-start',
+      component: ExamCountdownStartView,
+      meta: { title: '考试倒计时' }
+    },
+    {
+      path: '/exam-countdown/manage',
+      name: 'exam-countdown-manage',
+      component: ExamCountdownManageView,
+      meta: { title: '考试安排' }
     },
     {
       path: '/student',

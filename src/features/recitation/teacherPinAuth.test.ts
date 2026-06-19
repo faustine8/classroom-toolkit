@@ -18,6 +18,6 @@ describe('teacher pin auth helpers', () => {
     rememberTeacherPinAuthorization(' a7k2 ', ' 1357 ');
 
     expect(getRememberedTeacherPin('A7K2')).toBe('1357');
-    expect(window.localStorage.length).toBe(0);
+    expect(window.localStorage?.length ?? 0).toBe(0);
   });
 });
