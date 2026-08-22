@@ -3,6 +3,7 @@ import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import AppHero from '@/components/AppHero.vue';
+import AppTopNav from "@/components/AppTopNav.vue";
 import {
   buildCompletionMatrix,
   CLASS_STUDENT_TOTAL,
@@ -503,6 +504,8 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="page run-page queue-page">
+    <AppTopNav />
+
     <AppHero
       compact
       :eyebrow="`老师端 · ${sessionCode}`"

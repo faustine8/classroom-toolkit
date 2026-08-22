@@ -711,7 +711,7 @@ h2 {
 }
 
 .queue-page {
-  width: min(960px, calc(100% - 40px));
+  width: min(1280px, calc(100% - 40px));
 }
 
 .section-card {

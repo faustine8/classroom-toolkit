@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router';
 import { ElMessage, type InputInstance } from 'element-plus';
 import AppHero from '@/components/AppHero.vue';
+import AppTopNav from '@/components/AppTopNav.vue';
 import { currentRoom, formatRoomTitle, setCurrentRoom } from '@/features/recitation/room';
 import { STUDENT_NO_VALIDATION_MESSAGE, normalizeStudentNo } from '@/features/recitation/sessionLogic';
 import {
@@ -365,6 +366,8 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="page run-page queue-page">
+    <AppTopNav />
+
     <AppHero
       compact
       eyebrow="学生端"
